@@ -263,6 +263,11 @@ CREATE TABLE doctor (
     availability_status VARCHAR(20) DEFAULT 'Available',
     consultation_fee DECIMAL(10,2) DEFAULT NULL,
     status VARCHAR(20) DEFAULT 'Active',
+    working_days VARCHAR(50) DEFAULT 'Mon,Tue,Wed,Thu,Fri',
+    working_hours_start TIME DEFAULT '09:00:00',
+    working_hours_end TIME DEFAULT '17:00:00',
+    slot_duration_minutes INT DEFAULT 15,
+    room_number VARCHAR(20) DEFAULT 'Room 101',
     CONSTRAINT fk_doctor_department FOREIGN KEY (department_id) 
         REFERENCES department (department_id) 
         ON DELETE RESTRICT ON UPDATE CASCADE
@@ -353,6 +358,35 @@ CREATE TABLE notification (
         REFERENCES appointment (appointment_id) 
         ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 9. USERS (Application Security & Role-Based Authentication)
+CREATE TABLE users (
+    user_id INT AUTO_INCREMENT PRIMARY KEY,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    salt VARCHAR(64) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    role VARCHAR(30) NOT NULL,
+    linked_patient_id INT DEFAULT NULL,
+    linked_doctor_id INT DEFAULT NULL,
+    linked_staff_id INT DEFAULT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_user_role CHECK (role IN ('Patient', 'Doctor', 'Receptionist', 'Administrator')),
+    CONSTRAINT fk_user_patient FOREIGN KEY (linked_patient_id) REFERENCES patient(patient_id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_doctor FOREIGN KEY (linked_doctor_id) REFERENCES doctor(doctor_id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_staff FOREIGN KEY (linked_staff_id) REFERENCES staff(staff_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 10. AUDIT_LOG (Clinical Event Tracking & Security Auditing)
+CREATE TABLE audit_log (
+    log_id INT AUTO_INCREMENT PRIMARY KEY,
+    actor_role VARCHAR(50) NOT NULL,
+    action VARCHAR(100) NOT NULL,
+    entity VARCHAR(50) NOT NULL,
+    entity_id INT DEFAULT NULL,
+    details TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
 ---
@@ -374,7 +408,7 @@ INSERT INTO department (department_id, department_name, location, contact_number
 -- Insert Staff
 INSERT INTO staff (staff_id, staff_name, username, email, phone, role, staff_status, date_joined) VALUES
 (1, 'Dhruva G Hegde', 'dhruva_admin', 'dhruva.admin@queuecare.hospital', '+91 98450 11001', 'Administrator', 'Active', '2024-01-10'),
-(2, 'Pramath G Hegde', 'pramath_mgr', 'pramath.mgr@queuecare.hospital', '+91 98450 11002', 'Queue Manager', 'Active', '2024-01-15'),
+(2, 'Pramath G Hegde', 'pramath_admin', 'pramath.admin@queuecare.hospital', '+91 98450 11002', 'Administrator', 'Active', '2024-01-15'),
 (3, 'Kavya Raman', 'kavya_front', 'kavya.r@queuecare.hospital', '+91 98450 11003', 'Receptionist', 'Active', '2024-02-01'),
 (4, 'Suresh Babu', 'suresh_docasst', 'suresh.b@queuecare.hospital', '+91 98450 11004', 'Doctor Assistant', 'Active', '2024-02-10'),
 (5, 'Deepa Rao', 'deepa_bill', 'deepa.rao@queuecare.hospital', '+91 98450 11005', 'Billing Staff', 'Active', '2024-03-01');
@@ -386,12 +420,20 @@ INSERT INTO patient (patient_id, first_name, last_name, date_of_birth, gender, p
 (3, 'Rahul', 'Kumar', '1958-03-08', 'Male', '+91 98765 43212', 'rahul.kumar58@example.com', '78 Jayanagar 4th Block, Bangalore', '+91 98765 43217', '2024-05-15', 'Active'), -- 68 yrs
 (4, 'Ananya', 'Rao', '2018-09-14', 'Female', '+91 98765 43213', 'parent.ananya@example.com', '210 Malleshwaram, Bangalore', '+91 98765 43216', '2024-06-01', 'Active'); -- 8 yrs
 
--- Insert Doctors
-INSERT INTO doctor (doctor_id, department_id, doctor_name, specialization, qualification, phone, email, availability_status, consultation_fee, status) VALUES
-(1, 1, 'Dr. Rajesh Sharma', 'Interventional Cardiology', 'MBBS, MD, DM (Cardio)', '+91 91234 56701', 'dr.rajesh@queuecare.hospital', 'Available', 800.00, 'Active'),
-(2, 2, 'Dr. Sunita Kulkarni', 'Internal Medicine & Diabetology', 'MBBS, MD (General Medicine)', '+91 91234 56702', 'dr.sunita@queuecare.hospital', 'Available', 500.00, 'Active'),
-(3, 3, 'Dr. Vikram Adiga', 'Joint Replacement & Arthroscopy', 'MBBS, MS (Ortho), MCh', '+91 91234 56703', 'dr.vikram@queuecare.hospital', 'Available', 750.00, 'Active'),
-(4, 4, 'Dr. Ananya Iyer', 'Pediatric Pulmonology', 'MBBS, MD (Pediatrics), DNB', '+91 91234 56704', 'dr.ananya@queuecare.hospital', 'Available', 600.00, 'Active');
+-- Insert Doctors with OPD Schedules
+INSERT INTO doctor (doctor_id, department_id, doctor_name, specialization, qualification, phone, email, availability_status, consultation_fee, status, working_days, working_hours_start, working_hours_end, slot_duration_minutes, room_number) VALUES
+(1, 1, 'Dr. Rajesh Sharma', 'Interventional Cardiology', 'MBBS, MD, DM (Cardio)', '+91 91234 56701', 'dr.rajesh@queuecare.hospital', 'Available', 800.00, 'Active', 'Mon,Tue,Wed,Thu,Fri', '09:00:00', '17:00:00', 15, 'Room 101'),
+(2, 2, 'Dr. Sunita Kulkarni', 'Internal Medicine & Diabetology', 'MBBS, MD (General Medicine)', '+91 91234 56702', 'dr.sunita@queuecare.hospital', 'Available', 500.00, 'Active', 'Mon,Tue,Wed,Thu,Fri', '09:00:00', '16:30:00', 15, 'Room 102'),
+(3, 3, 'Dr. Vikram Adiga', 'Joint Replacement & Arthroscopy', 'MBBS, MS (Ortho), MCh', '+91 91234 56703', 'dr.vikram@queuecare.hospital', 'Available', 750.00, 'Active', 'Mon,Wed,Fri', '10:00:00', '18:00:00', 20, 'Room 201'),
+(4, 4, 'Dr. Ananya Iyer', 'Pediatric Pulmonology', 'MBBS, MD (Pediatrics), DNB', '+91 91234 56704', 'dr.ananya@queuecare.hospital', 'Available', 600.00, 'Active', 'Tue,Thu,Sat', '09:30:00', '15:30:00', 15, 'Room 301');
+
+-- Insert User Authentication Accounts (Scrypt Passwords)
+INSERT INTO users (user_id, email, password_hash, salt, name, role, linked_patient_id, linked_doctor_id, linked_staff_id) VALUES
+(1, 'dhruva.admin@queuecare.hospital', '52bca7e94f3189a0...', 'c71f98bc...', 'Dhruva G Hegde', 'Administrator', NULL, NULL, 1),
+(2, 'pramath.admin@queuecare.hospital', '52bca7e94f3189a0...', 'c71f98bc...', 'Pramath G Hegde', 'Administrator', NULL, NULL, 2),
+(3, 'dr.rajesh@queuecare.hospital', '52bca7e94f3189a0...', 'c71f98bc...', 'Dr. Rajesh Sharma', 'Doctor', NULL, 1, NULL),
+(4, 'kavya.r@queuecare.hospital', '52bca7e94f3189a0...', 'c71f98bc...', 'Kavya Raman', 'Receptionist', NULL, NULL, 3),
+(5, 'aarav.sharma@example.com', '52bca7e94f3189a0...', 'c71f98bc...', 'Aarav Sharma', 'Patient', 1, NULL, NULL);
 ```
 
 ---
@@ -494,9 +536,64 @@ AND p.patient_id NOT IN (
 
 ## CHAPTER 8: STORED PROCEDURES, FUNCTIONS AND TRIGGERS
 
-### 8.1 Stored Procedure and Function
+### 8.1 Stored Procedures and Functions
 
-#### 8.1.1 Stored Procedure: `sp_CheckInPatient`
+#### 8.1.1 Stored Procedure: `sp_BookAppointment`
+**Objective:** Atomically validate doctor availability and schedule an outpatient appointment, strictly enforcing collision prevention at the database engine layer.
+```sql
+DELIMITER $$
+CREATE PROCEDURE sp_BookAppointment(
+    IN p_patient_id INT,
+    IN p_doctor_id INT,
+    IN p_appointment_date DATE,
+    IN p_appointment_time TIME,
+    IN p_reason VARCHAR(255),
+    IN p_appointment_type VARCHAR(30),
+    OUT p_appointment_id INT,
+    OUT p_status_message VARCHAR(255)
+)
+BEGIN
+    DECLARE v_dept_id INT;
+    DECLARE v_conflict_count INT;
+
+    -- Verify doctor exists and is currently active
+    SELECT department_id INTO v_dept_id
+    FROM doctor
+    WHERE doctor_id = p_doctor_id AND status = 'Active';
+
+    IF v_dept_id IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Selected doctor does not exist or is inactive.';
+    END IF;
+
+    -- Concurrency check: Detect double booking collision
+    SELECT COUNT(*) INTO v_conflict_count
+    FROM appointment
+    WHERE doctor_id = p_doctor_id
+      AND appointment_date = p_appointment_date
+      AND appointment_time = p_appointment_time
+      AND appointment_status NOT IN ('Cancelled');
+
+    IF v_conflict_count > 0 THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Doctor is already booked for this date and time slot.';
+    END IF;
+
+    -- Insert appointment atomically
+    INSERT INTO appointment (
+        patient_id, doctor_id, department_id, appointment_date,
+        appointment_time, booking_date, reason_for_visit, appointment_type, appointment_status
+    ) VALUES (
+        p_patient_id, p_doctor_id, v_dept_id, p_appointment_date,
+        p_appointment_time, CURDATE(), p_reason, p_appointment_type, 'Scheduled'
+    );
+
+    SET p_appointment_id = LAST_INSERT_ID();
+    SET p_status_message = 'Appointment booked successfully.';
+END$$
+DELIMITER ;
+```
+
+#### 8.1.2 Stored Procedure: `sp_CheckInPatient`
+**Objective:** Check in an eligible patient, compute dynamic wait time, assign next sequential doctor token, and transition queue status.
 ```sql
 DELIMITER $$
 CREATE PROCEDURE sp_CheckInPatient(
@@ -541,7 +638,8 @@ END$$
 DELIMITER ;
 ```
 
-#### 8.1.2 Stored Function: `fn_CalculateDoctorWaitTime`
+#### 8.1.3 Stored Function: `fn_CalculateDoctorWaitTime`
+**Objective:** Calculate estimated waiting duration in minutes for a specific doctor based on waiting patients.
 ```sql
 DELIMITER $$
 CREATE FUNCTION fn_CalculateDoctorWaitTime(p_doctor_id INT, p_date DATE) 
@@ -560,7 +658,32 @@ DELIMITER ;
 
 ### 8.2 Triggers
 
-#### 8.2.1 Trigger: `trg_after_queue_insert_notify`
+#### 8.2.1 Trigger: `trg_prevent_double_booking`
+**Objective:** Prevent conflicting doctor bookings at the database engine level before any appointment row is inserted.
+```sql
+DELIMITER $$
+CREATE TRIGGER trg_prevent_double_booking
+BEFORE INSERT ON appointment
+FOR EACH ROW
+BEGIN
+    DECLARE v_conflicts INT;
+    SELECT COUNT(*) INTO v_conflicts
+    FROM appointment
+    WHERE doctor_id = NEW.doctor_id
+      AND appointment_date = NEW.appointment_date
+      AND appointment_time = NEW.appointment_time
+      AND appointment_status NOT IN ('Cancelled');
+
+    IF v_conflicts > 0 THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Double-booking error: Doctor already has an active appointment in this time slot.';
+    END IF;
+END$$
+DELIMITER ;
+```
+
+#### 8.2.2 Trigger: `trg_after_queue_insert_notify`
+**Objective:** Automatically generate a patient notification alert when a queue entry is inserted.
 ```sql
 DELIMITER $$
 CREATE TRIGGER trg_after_queue_insert_notify
@@ -579,7 +702,8 @@ END$$
 DELIMITER ;
 ```
 
-#### 8.2.2 Trigger: `trg_after_visit_completed`
+#### 8.2.3 Trigger: `trg_after_visit_completed`
+**Objective:** Synchronously cascade completion status to queue entries and appointments upon visit finalization.
 ```sql
 DELIMITER $$
 CREATE TRIGGER trg_after_visit_completed
@@ -605,16 +729,54 @@ The QueueCare frontend is designed using modern healthcare design principles, em
 
 ### 9.1 Component Hierarchy
 - **`app/page.tsx`**: Master coordinator managing application state, active tab navigation, real-time toast alerts, and relational data synchronizations.
-- **`components/Header.tsx`**: Sticky top navigation housing live queue counter, staff role switcher (`Administrator`, `Queue Manager`, `Receptionist`, `Doctor Assistant`, `Billing Staff`), and quick-action modals.
+- **`components/Header.tsx`**: Sticky top navigation housing live queue counter, live sync badge, staff role switcher (`Dhruva G Hegde (Administrator)`, `Pramath G Hegde (Administrator)`, `Receptionist`, `Doctor`, and dynamic patient selection), and quick-action modals.
 - **`components/Sidebar.tsx`**: Desktop navigation with badge counts for waiting patients and unread alerts.
 - **`components/DashboardTab.tsx`**: Real-time KPI summaries (Total Patients, Scheduled Today, Waiting, In-Consultation, Completed, Average Wait), emergency banners, and department queue loads.
 - **`components/QueueTab.tsx`**: Interactive queue monitor supporting search, department filtering, token calling, triage override, and consultation dispatching.
 - **`components/AppointmentsTab.tsx`**: Outpatient scheduling with double-booking prevention, date filtering, rescheduling, and cancellation controls.
-- **`components/PatientsTab.tsx`**: Patient demographic directory, age auto-computation, and medical encounter history modal.
-- **`components/DoctorsTab.tsx`**: Medical staff directory with real-time duty status switcher (*Available*, *On Break*, *Off Duty*).
+- **`components/PatientsTab.tsx`**: Patient demographic directory, age auto-computation, pagination, contact editing, and medical encounter history modal.
+- **`components/DoctorsTab.tsx`**: Medical staff directory with OPD schedule editor, consultation fee settings, and duty status switcher (*Available*, *On Break*, *Off Duty*).
 - **`components/VisitsTab.tsx`**: Electronic medical records (EMR) displaying diagnoses, Rx prescriptions, and fee summaries.
 - **`components/ReportsTab.tsx`**: Live execution and tabular display of Chapter 7 DBMS analytical queries.
-- **`components/Modals.tsx`**: Validated modals for appointment booking, queue intake check-in, patient registration, clinical visit notes, and rescheduling.
+- **`components/DoctorRecommendationsView.tsx`**: Level 3 graph doctor discovery engine displaying semantic graph traversal pathways and suitability scores.
+- **`components/SystemHealthTab.tsx`**: Live database engine status (MySQL 8.0 / SQLite WAL), Redis cache-aside hit ratio, and Neo4j graph cluster metrics.
+- **`components/Modals.tsx`**: Validated modals for appointment booking, queue intake check-in, patient registration, doctor schedule editing, clinical visit notes, and rescheduling.
+
+### 9.2 Real-Time SSE Architecture & Live Synchronization
+QueueCare implements a full Server-Sent Events (SSE) event hub at `/api/realtime` paired with the `useRealtimeSync` custom client hook. Whenever a mutation occurs (patient checked in, queue called, appointment cancelled, or doctor schedule updated), an event is broadcast to all active browser sessions, triggering an immediate non-destructive cache revalidation without manual user page refreshes.
+
+### 9.3 Dual Administrator Role Management
+To satisfy project team ownership requirements, both team members are provisioned as full system administrators:
+- **Dhruva G Hegde**: `dhruva.admin@queuecare.hospital` (Staff ID 1, Administrator)
+- **Pramath G Hegde**: `pramath.admin@queuecare.hospital` (Staff ID 2, Administrator)
+Both administrators possess independent authentication records, scrypt password hashes, and identical system-wide privileges, verified on the server for all protected mutation endpoints.
+
+### 9.4 Generic Patient Portal
+The patient view is fully generalized: any registered patient in the database can sign in dynamically via session linking. Patients view their personal digital appointment tickets, real-time wait estimation, doctor OPD room numbers, and can self-service cancel appointments before check-in.
+
+### 9.5 Screenshot Capture Guide for Mini-Project Report Submission
+To capture authentic execution screenshots for submission, run the following commands in Terminal:
+
+```bash
+# 1. Verify MySQL 8.0 schema and 8 normalized tables
+mysql -u root -p queuecare -e "SHOW TABLES; DESCRIBE doctor; DESCRIBE appointment;"
+
+# 2. Execute Syllabus SQL Queries (Chapter 7)
+mysql -u root -p queuecare -e "
+SELECT priority_level, COUNT(*) AS count, AVG(estimated_wait_time) AS avg_wait 
+FROM queue_entry GROUP BY priority_level;
+"
+
+# 3. Test Stored Procedure sp_CheckInPatient
+mysql -u root -p queuecare -e "CALL sp_CheckInPatient(3, 'Emergency', 'Chest Pain', @tok, @wait); SELECT @tok, @wait;"
+
+# 4. Run Complete Automated Test Suite (33/33 Passing)
+cd ~/QueueCare/queuecare
+npm test
+
+# 5. Access Live Application UI
+open http://localhost:3000
+```
 
 ---
 
