@@ -1,20 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  experimental: {
-    agentFeedback: true,
-  },
-  cacheComponents: true,
-  partialPrefetching: true,
-  turbopack: {
-    rules: {
-      "*.css": {
-        loaders: ["@tailwindcss/turbopack"],
-        as: "*.css",
-      },
-    },
-  },
+  serverExternalPackages: ["better-sqlite3", "mysql2", "ioredis", "neo4j-driver"],
 };
 
 export default nextConfig;
