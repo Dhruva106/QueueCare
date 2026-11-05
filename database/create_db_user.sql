@@ -13,3 +13,4 @@ GRANT ALL PRIVILEGES ON queuecare.* TO 'queuecare_user'@'localhost';
 GRANT ALL PRIVILEGES ON queuecare.* TO 'queuecare_user'@'127.0.0.1';
 
 FLUSH PRIVILEGES;
+

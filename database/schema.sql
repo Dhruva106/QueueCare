@@ -213,7 +213,8 @@ CREATE TABLE users (
 CREATE TABLE audit_log (
     log_id INT AUTO_INCREMENT PRIMARY KEY,
     action VARCHAR(100) NOT NULL,
-    performed_by VARCHAR(100) NOT NULL,
+    performed_by VARCHAR(100) DEFAULT 'System',
+    actor_role VARCHAR(100) DEFAULT 'System',
     entity VARCHAR(50) NOT NULL,
     entity_id INT DEFAULT NULL,
     details TEXT DEFAULT NULL,

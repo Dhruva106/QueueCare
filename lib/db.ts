@@ -195,7 +195,8 @@ function initializeTablesIfMissing(db: BetterSqliteDatabase) {
     -- Operational Audit Log Table
     CREATE TABLE IF NOT EXISTS audit_log (
       log_id INTEGER PRIMARY KEY AUTOINCREMENT,
-      actor_role TEXT NOT NULL,
+      actor_role TEXT NOT NULL DEFAULT 'System',
+      performed_by TEXT NOT NULL DEFAULT 'System',
       action TEXT NOT NULL,
       entity TEXT NOT NULL,
       entity_id INTEGER,
@@ -343,9 +344,9 @@ export async function logAuditEvent(
   details?: string | null
 ): Promise<void> {
   await run(
-    `INSERT INTO audit_log (actor_role, action, entity, entity_id, details)
-     VALUES (?, ?, ?, ?, ?)`,
-    [actorRole, action, entity, entityId ?? null, details ?? null]
+    `INSERT INTO audit_log (actor_role, performed_by, action, entity, entity_id, details)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [actorRole, actorRole, action, entity, entityId ?? null, details ?? null]
   );
 }
 

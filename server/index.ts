@@ -713,8 +713,8 @@ app.post("/api/appointments", async (req: Request, res: Response) => {
 
     // Clinical audit log
     await run(
-      `INSERT INTO audit_log (actor_role, action, entity, entity_id, details)
-       VALUES ('Receptionist', 'BOOK_APPOINTMENT', 'appointment', ?, ?)`,
+      `INSERT INTO audit_log (actor_role, performed_by, action, entity, entity_id, details)
+       VALUES ('Receptionist', 'Receptionist', 'BOOK_APPOINTMENT', 'appointment', ?, ?)`,
       [appointmentId, `Booked for patient #${pid} with doctor #${did} on ${appointment_date} ${appointment_time}`]
     );
 
