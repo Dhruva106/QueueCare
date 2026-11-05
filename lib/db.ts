@@ -441,6 +441,56 @@ async function getMysqlPool() {
 }
 
 /**
+ * Health check helper that explicitly verifies connectivity to the authoritative database
+ */
+export async function checkDatabaseHealth(): Promise<{
+  engine: DBEngine;
+  connected: boolean;
+  message: string;
+  tableCount?: number;
+}> {
+  const engine = getDatabaseType();
+  if (engine === "mysql") {
+    try {
+      const pool = await getMysqlPool();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const [rows] = await (pool as any).query("SELECT count(*) as count FROM information_schema.tables WHERE table_schema = DATABASE()");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const tableCount = Number((rows as any[])[0]?.count || 0);
+      return {
+        engine: "mysql",
+        connected: true,
+        message: `Connected to MySQL 8.0 ('${process.env.DB_NAME || "queuecare"}' on ${process.env.DB_HOST || "localhost"}:${process.env.DB_PORT || 3306}) with ${tableCount} tables.`,
+        tableCount,
+      };
+    } catch (err) {
+      return {
+        engine: "mysql",
+        connected: false,
+        message: `MySQL Connection Failed: ${(err as Error).message}. Verify DB_USER and DB_PASSWORD or run database/setup_mysql.sh.`,
+      };
+    }
+  }
+
+  try {
+    const db = getSqliteDb();
+    const row = db.prepare("SELECT count(*) as count FROM sqlite_master WHERE type='table'").get() as { count: number };
+    return {
+      engine: "sqlite",
+      connected: true,
+      message: `Connected to local SQLite WAL database (${row.count} tables).`,
+      tableCount: row.count,
+    };
+  } catch (err) {
+    return {
+      engine: "sqlite",
+      connected: false,
+      message: `SQLite Connection Failed: ${(err as Error).message}`,
+    };
+  }
+}
+
+/**
  * Resets and re-seeds database (useful for testing or demonstration resets)
  */
 export function resetDatabase() {

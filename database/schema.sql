@@ -34,7 +34,7 @@ CREATE TABLE department (
     department_id INT AUTO_INCREMENT PRIMARY KEY,
     department_name VARCHAR(100) NOT NULL UNIQUE,
     location VARCHAR(100) DEFAULT NULL,
-    contact_number VARCHAR(15) DEFAULT NULL,
+    contact_number VARCHAR(25) DEFAULT NULL,
     status VARCHAR(20) DEFAULT 'Active'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -44,7 +44,7 @@ CREATE TABLE staff (
     staff_name VARCHAR(100) NOT NULL,
     username VARCHAR(50) NOT NULL UNIQUE,
     email VARCHAR(100) NOT NULL UNIQUE,
-    phone VARCHAR(15) DEFAULT NULL,
+    phone VARCHAR(25) DEFAULT NULL,
     role VARCHAR(30) NOT NULL,
     staff_status VARCHAR(20) DEFAULT 'Active',
     date_joined DATE DEFAULT NULL,
@@ -58,10 +58,10 @@ CREATE TABLE patient (
     last_name VARCHAR(50) NOT NULL,
     date_of_birth DATE NOT NULL,
     gender VARCHAR(10) DEFAULT NULL,
-    phone VARCHAR(15) UNIQUE DEFAULT NULL,
+    phone VARCHAR(25) UNIQUE DEFAULT NULL,
     email VARCHAR(100) UNIQUE DEFAULT NULL,
     address VARCHAR(255) DEFAULT NULL,
-    emergency_contact VARCHAR(15) DEFAULT NULL,
+    emergency_contact VARCHAR(25) DEFAULT NULL,
     registration_date DATE NOT NULL,
     status VARCHAR(20) DEFAULT 'Active'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -73,7 +73,7 @@ CREATE TABLE doctor (
     doctor_name VARCHAR(100) NOT NULL,
     specialization VARCHAR(100) DEFAULT NULL,
     qualification VARCHAR(150) DEFAULT NULL,
-    phone VARCHAR(15) DEFAULT NULL,
+    phone VARCHAR(25) DEFAULT NULL,
     email VARCHAR(100) UNIQUE DEFAULT NULL,
     availability_status VARCHAR(20) DEFAULT 'Available',
     consultation_fee DECIMAL(10,2) DEFAULT NULL,

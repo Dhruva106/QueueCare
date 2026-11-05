@@ -593,7 +593,7 @@ DELIMITER ;
 ```
 
 #### 8.1.2 Stored Procedure: `sp_CheckInPatient`
-**Objective:** Check in an eligible patient, compute dynamic wait time, assign next sequential doctor token, and transition queue status.
+**Objective:** Check in an eligible patient, compute dynamic wait time, assign next sequential doctor token, and transition queue status with strict idempotency to prevent duplicate entry collisions.
 ```sql
 DELIMITER $$
 CREATE PROCEDURE sp_CheckInPatient(
@@ -608,32 +608,62 @@ BEGIN
     DECLARE v_patient_id INT;
     DECLARE v_max_token INT;
     DECLARE v_waiting_count INT;
+    DECLARE v_existing_token INT DEFAULT NULL;
+    DECLARE v_existing_wait INT DEFAULT NULL;
+    DECLARE v_existing_status VARCHAR(30) DEFAULT NULL;
 
     SELECT doctor_id, patient_id INTO v_doctor_id, v_patient_id
     FROM appointment WHERE appointment_id = p_appointment_id;
 
-    SELECT COALESCE(MAX(token_number), 100) INTO v_max_token
-    FROM queue_entry WHERE doctor_id = v_doctor_id AND queue_date = CURDATE();
+    IF v_doctor_id IS NULL THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Appointment not found.';
+    END IF;
 
-    SET p_assigned_token = v_max_token + 1;
+    -- Idempotency Guard: Check if appointment already has an active queue entry
+    SELECT token_number, estimated_wait_time, queue_status 
+    INTO v_existing_token, v_existing_wait, v_existing_status
+    FROM queue_entry
+    WHERE appointment_id = p_appointment_id;
 
-    SELECT COUNT(*) INTO v_waiting_count
-    FROM queue_entry WHERE doctor_id = v_doctor_id AND queue_date = CURDATE() AND queue_status = 'Waiting';
+    IF v_existing_token IS NOT NULL THEN
+        -- Patient already checked in: return existing token and wait time safely
+        SET p_assigned_token = v_existing_token;
+        SET p_est_wait_time = v_existing_wait;
 
-    SET p_est_wait_time = IF(p_priority_level = 'Emergency', 0, v_waiting_count * 15);
+        IF p_priority_level = 'Emergency' AND v_existing_status = 'Waiting' THEN
+            UPDATE queue_entry
+            SET priority_level = 'Emergency',
+                priority_reason = COALESCE(p_priority_reason, priority_reason),
+                estimated_wait_time = 0
+            WHERE appointment_id = p_appointment_id;
+            SET p_est_wait_time = 0;
+        END IF;
 
-    INSERT INTO queue_entry (
-        appointment_id, doctor_id, token_number, queue_date, check_in_time,
-        estimated_wait_time, priority_level, priority_reason, queue_status
-    ) VALUES (
-        p_appointment_id, v_doctor_id, p_assigned_token, CURDATE(), CURTIME(),
-        p_est_wait_time, p_priority_level, p_priority_reason, 'Waiting'
-    );
+        UPDATE appointment SET appointment_status = 'Checked-In' WHERE appointment_id = p_appointment_id;
+    ELSE
+        SELECT COALESCE(MAX(token_number), v_doctor_id * 100) INTO v_max_token
+        FROM queue_entry WHERE doctor_id = v_doctor_id AND queue_date = CURDATE();
 
-    UPDATE appointment SET appointment_status = 'Checked-In' WHERE appointment_id = p_appointment_id;
+        SET p_assigned_token = v_max_token + 1;
 
-    INSERT INTO notification (patient_id, appointment_id, notification_type, message)
-    VALUES (v_patient_id, p_appointment_id, 'Queue Update', CONCAT('Token #', p_assigned_token, ' generated.'));
+        SELECT COUNT(*) INTO v_waiting_count
+        FROM queue_entry WHERE doctor_id = v_doctor_id AND queue_date = CURDATE() AND queue_status = 'Waiting';
+
+        SET p_est_wait_time = IF(p_priority_level = 'Emergency', 0, v_waiting_count * 15);
+
+        INSERT INTO queue_entry (
+            appointment_id, doctor_id, token_number, queue_date, check_in_time,
+            estimated_wait_time, priority_level, priority_reason, queue_status
+        ) VALUES (
+            p_appointment_id, v_doctor_id, p_assigned_token, CURDATE(), CURTIME(),
+            p_est_wait_time, p_priority_level, p_priority_reason, 'Waiting'
+        );
+
+        UPDATE appointment SET appointment_status = 'Checked-In' WHERE appointment_id = p_appointment_id;
+
+        INSERT INTO notification (patient_id, appointment_id, notification_type, message)
+        VALUES (v_patient_id, p_appointment_id, 'Queue Update', CONCAT('Token #', p_assigned_token, ' generated.'));
+    END IF;
 END$$
 DELIMITER ;
 ```

@@ -61,27 +61,40 @@ Built using **Next.js 16 App Router**, **React 19**, **TypeScript**, and **Tailw
 
 ---
 
-## 3. Quick Start Guide
+## 3. Three-Terminal Independent Execution Guide
 
-### Prerequisites
-- **Node.js**: v18.0.0 or higher (Node v20+ recommended)
-- **npm**: v9.0.0 or higher
+QueueCare is designed to run in three independent terminal sessions for transparent full-stack evaluation:
 
-### Step 1: Navigate to the Project
+### TERMINAL 1 — MySQL 8.0 Database Setup & Verification
+Ensure MySQL 8.0 is running on port 3306, then execute the automated setup script to provision the database, dedicated user, schema, and stored routines:
+
 ```bash
 cd ~/QueueCare/queuecare
+bash database/setup_mysql.sh
 ```
 
-### Step 2: Install Dependencies
+To verify MySQL connection and table counts:
 ```bash
-npm install
+mysql -u queuecare_user -pqueuecare_pass queuecare -e "SHOW TABLES; SELECT COUNT(*) FROM patient;"
 ```
 
-### Step 3: Run the Development Server
+### TERMINAL 2 — Dedicated Backend API Server (Port 5001)
+Launch the standalone Express & TypeScript backend API server:
+
 ```bash
-npm run dev
+cd ~/QueueCare/queuecare
+npm run dev:backend
 ```
-Open **[http://localhost:3000](http://localhost:3000)** in your browser.
+*The backend API server connects to the database, exposes REST endpoints at `http://localhost:5001/api`, runs Server-Sent Events (SSE), and logs all requests with response times.*
+
+### TERMINAL 3 — Frontend Development Server (Port 3000)
+Launch the Next.js frontend development server:
+
+```bash
+cd ~/QueueCare/queuecare
+npm run dev:frontend
+```
+*The frontend starts on `http://localhost:3000`, communicates with the dedicated Backend API on port 5001, and provides real-time hospital triage operations.*
 
 ---
 
@@ -99,16 +112,19 @@ To demonstrate real-time data propagation across independent client sessions:
 
 ## 5. Verification and Testing
 
-Execute the automated test suite covering all 12 operational test suites (33 tests):
+Execute the automated test suites covering unit tests, integration tests, and full-stack end-to-end acceptance tests:
 
 ```bash
-# Run unit, integration, and real-time test suite (33 tests)
+# 1. Run unit, integration, and real-time test suite (33 tests - 100% passing)
 npm test
 
-# Run ESLint validation (0 errors, 0 warnings)
+# 2. Run full-stack End-to-End acceptance test (all 7 critical workflows)
+node scripts/test-e2e-backend.mjs
+
+# 3. Run ESLint validation (0 errors, 0 warnings)
 npm run lint
 
-# Run optimized production build
+# 4. Run optimized production build (0 errors)
 npm run build
 ```
 

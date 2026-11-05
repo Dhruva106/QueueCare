@@ -95,17 +95,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Appointment not found." }, { status: 404 });
     }
 
-    // Check if already checked in
+    // Idempotent Check: Check if already checked in
     const existingQueue = await get<QueueEntry>("SELECT * FROM queue_entry WHERE appointment_id = ?", [appointment_id]);
     if (existingQueue) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Patient is already in the queue with Token #${existingQueue.token_number} (Status: ${existingQueue.queue_status}).`,
-          queue_entry: existingQueue,
-        },
-        { status: 409 }
-      );
+      return NextResponse.json({
+        success: true,
+        alreadyCheckedIn: true,
+        message: `Patient is already in the queue with Token #${existingQueue.token_number} (Status: ${existingQueue.queue_status}).`,
+        token_number: existingQueue.token_number,
+        estimated_wait_time: existingQueue.estimated_wait_time,
+        queue_entry: existingQueue,
+      });
     }
 
     const today = new Date().toISOString().split("T")[0];
@@ -180,6 +180,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      alreadyCheckedIn: false,
       queue_id: result.lastInsertId,
       token_number: nextToken,
       priority_level: triage.priorityLevel,

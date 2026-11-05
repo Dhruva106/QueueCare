@@ -166,6 +166,8 @@ export async function cacheDel(keyOrPattern: string): Promise<void> {
   }
 }
 
+export const invalidateCacheKey = cacheDel;
+
 /**
  * Cache-Aside read helper:
  * 1. Checks cache

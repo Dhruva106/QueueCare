@@ -3,15 +3,22 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "dev:backend": "tsx server/index.ts",
+    "dev:frontend": "next dev --webpack",
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
     "test": "node scripts/run-tests.mjs",
-    "db:init": "node scripts/init-db.mjs"
+    "test:mysql": "DB_TYPE=mysql node scripts/run-tests.mjs",
+    "db:init": "node scripts/init-db.mjs",
+    "db:setup:mysql": "bash database/setup_mysql.sh"
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.9",
+    "express": "^5.3.0",
     "ioredis": "^6.0.0",
     "lucide-react": "^1.66.0",
     "mysql2": "^3.24.6",
@@ -24,6 +31,8 @@
     "@tailwindcss/postcss": "^4.3.3",
     "@tailwindcss/turbopack": "^4",
     "@types/better-sqlite3": "^9.6.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
     "@types/ioredis": "^4.28.10",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -31,6 +40,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.4.3",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }

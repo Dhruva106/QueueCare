@@ -88,6 +88,9 @@ BEGIN
     DECLARE v_current_date DATE;
     DECLARE v_max_token INT;
     DECLARE v_waiting_count INT;
+    DECLARE v_existing_token INT DEFAULT NULL;
+    DECLARE v_existing_wait INT DEFAULT NULL;
+    DECLARE v_existing_status VARCHAR(30) DEFAULT NULL;
 
     SET v_current_date = CURDATE();
 
@@ -100,40 +103,66 @@ BEGIN
         SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Appointment not found.';
     END IF;
 
-    -- Generate sequential token for this doctor on today's date
-    SELECT COALESCE(MAX(token_number), v_doctor_id * 100) INTO v_max_token
+    -- Idempotency Guard: Check if appointment already has an active queue entry
+    SELECT token_number, estimated_wait_time, queue_status 
+    INTO v_existing_token, v_existing_wait, v_existing_status
     FROM queue_entry
-    WHERE doctor_id = v_doctor_id AND queue_date = v_current_date;
-
-    SET p_assigned_token = v_max_token + 1;
-
-    -- Count existing patients waiting ahead for estimated wait time
-    SELECT COUNT(*) INTO v_waiting_count
-    FROM queue_entry
-    WHERE doctor_id = v_doctor_id 
-      AND queue_date = v_current_date 
-      AND queue_status IN ('Waiting', 'Called');
-
-    -- Emergency patients jump wait time; others receive 15 min per patient ahead
-    IF p_priority_level = 'Emergency' THEN
-        SET p_est_wait_time = 0;
-    ELSE
-        SET p_est_wait_time = v_waiting_count * 15;
-    END IF;
-
-    -- Insert into queue_entry (trg_after_queue_insert_notify will automatically emit notification)
-    INSERT INTO queue_entry (
-        appointment_id, doctor_id, token_number, queue_date,
-        check_in_time, estimated_wait_time, priority_level, priority_reason, queue_status
-    ) VALUES (
-        p_appointment_id, v_doctor_id, p_assigned_token, v_current_date,
-        CURTIME(), p_est_wait_time, p_priority_level, p_priority_reason, 'Waiting'
-    );
-
-    -- Update appointment status
-    UPDATE appointment
-    SET appointment_status = 'Checked-In'
     WHERE appointment_id = p_appointment_id;
+
+    IF v_existing_token IS NOT NULL THEN
+        -- Patient already checked in: return existing token and wait time safely without error 1062
+        SET p_assigned_token = v_existing_token;
+        SET p_est_wait_time = v_existing_wait;
+
+        -- If priority is escalated (e.g. to Emergency), update existing entry
+        IF p_priority_level = 'Emergency' AND v_existing_status = 'Waiting' THEN
+            UPDATE queue_entry
+            SET priority_level = 'Emergency',
+                priority_reason = COALESCE(p_priority_reason, priority_reason),
+                estimated_wait_time = 0
+            WHERE appointment_id = p_appointment_id;
+            SET p_est_wait_time = 0;
+        END IF;
+
+        UPDATE appointment
+        SET appointment_status = 'Checked-In'
+        WHERE appointment_id = p_appointment_id;
+    ELSE
+        -- Generate sequential token for this doctor on today's date
+        SELECT COALESCE(MAX(token_number), v_doctor_id * 100) INTO v_max_token
+        FROM queue_entry
+        WHERE doctor_id = v_doctor_id AND queue_date = v_current_date;
+
+        SET p_assigned_token = v_max_token + 1;
+
+        -- Count existing patients waiting ahead for estimated wait time
+        SELECT COUNT(*) INTO v_waiting_count
+        FROM queue_entry
+        WHERE doctor_id = v_doctor_id 
+          AND queue_date = v_current_date 
+          AND queue_status IN ('Waiting', 'Called');
+
+        -- Emergency patients jump wait time; others receive 15 min per patient ahead
+        IF p_priority_level = 'Emergency' THEN
+            SET p_est_wait_time = 0;
+        ELSE
+            SET p_est_wait_time = v_waiting_count * 15;
+        END IF;
+
+        -- Insert into queue_entry (trg_after_queue_insert_notify will automatically emit notification)
+        INSERT INTO queue_entry (
+            appointment_id, doctor_id, token_number, queue_date,
+            check_in_time, estimated_wait_time, priority_level, priority_reason, queue_status
+        ) VALUES (
+            p_appointment_id, v_doctor_id, p_assigned_token, v_current_date,
+            CURTIME(), p_est_wait_time, p_priority_level, p_priority_reason, 'Waiting'
+        );
+
+        -- Update appointment status
+        UPDATE appointment
+        SET appointment_status = 'Checked-In'
+        WHERE appointment_id = p_appointment_id;
+    END IF;
 END$$
 
 
