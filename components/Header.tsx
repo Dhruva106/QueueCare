@@ -2,7 +2,7 @@
 
 import React from "react";
 import { UserRole, AuthUser } from "@/lib/auth";
-import { Patient } from "@/lib/types";
+import { Patient, Doctor } from "@/lib/types";
 import {
   Shield,
   RefreshCw,
@@ -18,7 +18,8 @@ interface HeaderProps {
   currentUserName?: string;
   currentUser?: AuthUser | null;
   patients?: Patient[];
-  onSwitchPersona: (personaKey: string, patientId?: number) => void;
+  doctors?: Doctor[];
+  onSwitchPersona: (personaKey: string, patientId?: number, doctorId?: number) => void;
   waitingCount: number;
   isRealtimeConnected?: boolean;
   onRefresh: () => void;
@@ -33,6 +34,7 @@ export default function Header({
   currentUserName,
   currentUser,
   patients = [],
+  doctors = [],
   onSwitchPersona,
   waitingCount,
   isRealtimeConnected = true,
@@ -49,7 +51,9 @@ export default function Header({
       }
       return "admin_dhruva";
     }
-    if (currentRole === "Doctor") return "doctor";
+    if (currentRole === "Doctor") {
+      return `doctor:${currentUser?.linkedDoctorId || 1}`;
+    }
     if (currentRole === "Receptionist") return "receptionist";
     if (currentRole === "Patient") {
       return `patient:${currentUser?.linkedPatientId || 1}`;
@@ -62,6 +66,9 @@ export default function Header({
     if (val.startsWith("patient:")) {
       const pid = parseInt(val.split(":")[1], 10);
       onSwitchPersona("patient", pid);
+    } else if (val.startsWith("doctor:")) {
+      const did = parseInt(val.split(":")[1], 10);
+      onSwitchPersona("doctor", undefined, did);
     } else {
       onSwitchPersona(val);
     }
@@ -198,8 +205,18 @@ export default function Header({
                   <option value="admin_dhruva">Dhruva G Hegde (Administrator · Project Lead)</option>
                   <option value="admin_pramath">Pramath G Hegde (Administrator · Co-Lead)</option>
                 </optgroup>
-                <optgroup label="Clinical Hospital Staff">
-                  <option value="doctor">Dr. Rajesh Sharma (Doctor · Cardiology OPD)</option>
+                <optgroup label="Physicians (Multi-Doctor Portal)">
+                  {doctors.length > 0 ? (
+                    doctors.map((doc) => (
+                      <option key={doc.doctor_id} value={`doctor:${doc.doctor_id}`}>
+                        {doc.doctor_name} ({doc.specialization || "Physician"} · Room {doc.room_number || "OPD"})
+                      </option>
+                    ))
+                  ) : (
+                    <option value="doctor:1">Dr. Rajesh Sharma (Cardiology · Room 101)</option>
+                  )}
+                </optgroup>
+                <optgroup label="Front Desk & Intake Desk">
                   <option value="receptionist">Kavya Raman (Receptionist · Front Desk)</option>
                 </optgroup>
                 <optgroup label="Patient Portal (Self-Service)">

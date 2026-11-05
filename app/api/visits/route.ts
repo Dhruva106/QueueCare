@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     let sql = `
       SELECT 
         v.*,
-        p.first_name || ' ' || p.last_name as patient_name,
+        CONCAT(p.first_name, ' ', p.last_name) as patient_name,
         doc.doctor_name
       FROM visit v
       JOIN appointment a ON v.appointment_id = a.appointment_id

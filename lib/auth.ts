@@ -115,10 +115,12 @@ export interface DemoPersona {
   role: UserRole;
   title: string;
   initials: string;
+  linkedDoctorId?: number;
+  linkedPatientId?: number;
 }
 
 /**
- * Seed Demo Personas for Evaluation (including both team administrators)
+ * Seed Demo Personas for Evaluation (including both team administrators and doctors)
  */
 export const DEMO_PERSONAS: DemoPersona[] = [
   {
@@ -142,8 +144,27 @@ export const DEMO_PERSONAS: DemoPersona[] = [
     email: "dr.rajesh@queuecare.hospital",
     name: "Dr. Rajesh Sharma",
     role: "Doctor",
-    title: "Cardiologist · OPD Room 101",
+    title: "Interventional Cardiology · Room 101",
     initials: "RS",
+    linkedDoctorId: 1,
+  },
+  {
+    key: "doctor_sunita",
+    email: "dr.sunita@queuecare.hospital",
+    name: "Dr. Sunita Kulkarni",
+    role: "Doctor",
+    title: "Internal Medicine & Diabetology · Room 102",
+    initials: "SK",
+    linkedDoctorId: 2,
+  },
+  {
+    key: "doctor_vikram",
+    email: "dr.vikram@queuecare.hospital",
+    name: "Dr. Vikram Adiga",
+    role: "Doctor",
+    title: "Joint Replacement & Orthopedics · Room 103",
+    initials: "VA",
+    linkedDoctorId: 3,
   },
   {
     key: "receptionist",
@@ -160,6 +181,7 @@ export const DEMO_PERSONAS: DemoPersona[] = [
     role: "Patient",
     title: "Patient Self-Service Portal",
     initials: "PT",
+    linkedPatientId: 1,
   },
 ];
 

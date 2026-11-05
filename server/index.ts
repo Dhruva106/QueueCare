@@ -95,7 +95,7 @@ app.get("/api/db/health", async (_req: Request, res: Response) => {
 // -----------------------------------------------------------------------------
 app.post("/api/auth/login", async (req: Request, res: Response) => {
   try {
-    const { email, password, demoKey, patientId } = req.body;
+    const { email, password, demoKey, patientId, doctorId } = req.body;
 
     // A. Dynamic Patient Sign-In by Patient ID
     if (patientId) {
@@ -116,17 +116,40 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
       return res.json({ success: true, user: userPayload, token });
     }
 
-    // B. Preset Demo User Switcher
+    // B. Dynamic Doctor Sign-In by Doctor ID or "doctor:ID" demo key
+    const requestedDocId = doctorId || (typeof demoKey === "string" && demoKey.startsWith("doctor:") ? Number(demoKey.split(":")[1]) : undefined);
+    if (requestedDocId) {
+      const did = Number(requestedDocId);
+      const doc = await get<Doctor>("SELECT * FROM doctor WHERE doctor_id = ?", [did]);
+      if (!doc) {
+        return res.status(404).json({ success: false, error: `Doctor #${did} not found in database.` });
+      }
+      const userRow = await get<{ user_id: number }>("SELECT user_id FROM users WHERE linked_doctor_id = ? OR email = ?", [did, doc.email]);
+      const userPayload: AuthUser = {
+        id: userRow?.user_id || (2000 + did),
+        email: doc.email || `doctor${did}@queuecare.hospital`,
+        name: doc.doctor_name,
+        role: "Doctor",
+        linkedDoctorId: did,
+      };
+      const token = createSessionToken(userPayload);
+      res.setHeader("Set-Cookie", `qc_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400`);
+      return res.json({ success: true, user: userPayload, token });
+    }
+
+    // C. Preset Demo User Switcher
     if (demoKey) {
       const demo = DEMO_PERSONAS.find(
         (p) => p.key === demoKey || p.role.toLowerCase() === String(demoKey).toLowerCase()
       );
       if (demo) {
         const demoUser: AuthUser = {
-          id: demo.key === "admin_dhruva" ? 1 : demo.key === "admin_pramath" ? 2 : 10,
+          id: demo.key === "admin_dhruva" ? 1 : demo.key === "admin_pramath" ? 2 : (demo.linkedDoctorId ? 2000 + demo.linkedDoctorId : 10),
           name: demo.name,
           email: demo.email,
           role: demo.role,
+          linkedDoctorId: demo.linkedDoctorId,
+          linkedPatientId: demo.linkedPatientId,
         };
         const token = createSessionToken(demoUser);
         res.setHeader("Set-Cookie", `qc_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400`);
@@ -134,7 +157,7 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
       }
     }
 
-    // C. Standard Email/Password Authentication against Database
+    // D. Standard Email/Password Authentication against Database
     if (!email || !password) {
       return res.status(400).json({ success: false, error: "Email and password are required." });
     }
@@ -237,6 +260,7 @@ app.get("/api/dashboard/stats", async (_req: Request, res: Response) => {
   try {
     const totalPatientsRow = await get<{ count: number }>("SELECT count(*) as count FROM patient WHERE status = 'Active'");
     const totalAppointmentsRow = await get<{ count: number }>("SELECT count(*) as count FROM appointment WHERE appointment_date = CURDATE()");
+    const totalScheduledRow = await get<{ count: number }>("SELECT count(*) as count FROM appointment WHERE appointment_status = 'Scheduled'");
     const waitingRow = await get<{ count: number }>("SELECT count(*) as count FROM queue_entry WHERE queue_date = CURDATE() AND queue_status = 'Waiting'");
     const inConsultationRow = await get<{ count: number }>("SELECT count(*) as count FROM queue_entry WHERE queue_date = CURDATE() AND queue_status = 'In-Consultation'");
     const completedTodayRow = await get<{ count: number }>("SELECT count(*) as count FROM queue_entry WHERE queue_date = CURDATE() AND queue_status = 'Completed'");
@@ -283,6 +307,7 @@ app.get("/api/dashboard/stats", async (_req: Request, res: Response) => {
       stats: {
         totalPatients: totalPatientsRow?.count || 0,
         appointmentsToday: totalAppointmentsRow?.count || 0,
+        totalScheduled: totalScheduledRow?.count || 0,
         waitingPatients: waitingRow?.count || 0,
         inConsultation: inConsultationRow?.count || 0,
         completedToday: completedTodayRow?.count || 0,
@@ -621,6 +646,7 @@ app.get("/api/appointments", async (req: Request, res: Response) => {
         a.*,
         p.first_name,
         p.last_name,
+        CONCAT(p.first_name, ' ', p.last_name) AS patient_name,
         p.phone AS patient_phone,
         doc.doctor_name,
         doc.room_number,
@@ -735,29 +761,44 @@ app.post("/api/appointments", async (req: Request, res: Response) => {
 app.patch("/api/appointments/:id", async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
-    const { appointment_status, appointment_date, appointment_time, remarks } = req.body;
+    const { appointment_status, appointment_date, appointment_time, remarks, doctor_id, department_id } = req.body;
 
-    const existing = await get<{ appointment_id: number; doctor_id: number; appointment_status: string }>(
-      "SELECT appointment_id, doctor_id, appointment_status FROM appointment WHERE appointment_id = ?",
+    const existing = await get<{
+      appointment_id: number;
+      doctor_id: number;
+      department_id: number;
+      patient_id: number;
+      appointment_date: string;
+      appointment_time: string;
+      appointment_status: string;
+    }>(
+      "SELECT appointment_id, doctor_id, department_id, patient_id, appointment_date, appointment_time, appointment_status FROM appointment WHERE appointment_id = ?",
       [id]
     );
     if (!existing) {
       return res.status(404).json({ success: false, error: "Appointment not found." });
     }
 
-    // Collision check if rescheduling date or time
-    if (appointment_date || appointment_time) {
-      const newDate = appointment_date || (await get<{ appointment_date: string }>("SELECT appointment_date FROM appointment WHERE appointment_id = ?", [id]))?.appointment_date;
-      const newTime = appointment_time || (await get<{ appointment_time: string }>("SELECT appointment_time FROM appointment WHERE appointment_id = ?", [id]))?.appointment_time;
+    const targetDocId = doctor_id ? Number(doctor_id) : existing.doctor_id;
+    const newDate = appointment_date || existing.appointment_date;
+    const newTime = appointment_time || existing.appointment_time;
 
+    // Collision check if rescheduling doctor, date, or time
+    if (appointment_date || appointment_time || doctor_id) {
       const conflict = await get<{ appointment_id: number }>(
         `SELECT appointment_id FROM appointment 
          WHERE doctor_id = ? AND appointment_date = ? AND appointment_time = ? AND appointment_id != ? AND appointment_status NOT IN ('Cancelled')`,
-        [existing.doctor_id, newDate, newTime, id]
+        [targetDocId, newDate, newTime, id]
       );
       if (conflict) {
         return res.status(409).json({ success: false, error: "Conflicting appointment already exists for this doctor and time slot." });
       }
+    }
+
+    let targetDeptId = department_id ? Number(department_id) : existing.department_id;
+    if (doctor_id && !department_id) {
+      const docDept = await get<{ department_id: number }>("SELECT department_id FROM doctor WHERE doctor_id = ?", [targetDocId]);
+      if (docDept) targetDeptId = docDept.department_id;
     }
 
     const updates: string[] = [];
@@ -766,17 +807,34 @@ app.patch("/api/appointments/:id", async (req: Request, res: Response) => {
     if (appointment_status) { updates.push("appointment_status = ?"); params.push(appointment_status); }
     if (appointment_date) { updates.push("appointment_date = ?"); params.push(appointment_date); }
     if (appointment_time) { updates.push("appointment_time = ?"); params.push(appointment_time); }
+    if (doctor_id) { updates.push("doctor_id = ?"); params.push(targetDocId); }
+    if (targetDeptId !== existing.department_id) { updates.push("department_id = ?"); params.push(targetDeptId); }
     if (remarks !== undefined) { updates.push("remarks = ?"); params.push(remarks); }
 
-    params.push(id);
-    await run(`UPDATE appointment SET ${updates.join(", ")} WHERE appointment_id = ?`, params);
+    if (updates.length > 0) {
+      params.push(id);
+      await run(`UPDATE appointment SET ${updates.join(", ")} WHERE appointment_id = ?`, params);
+    }
 
-    // If cancelled, cascade cancellation to active queue entry
+    // If cancelled, cascade cancellation to active queue entry and notify
     if (appointment_status === "Cancelled") {
       await run("UPDATE queue_entry SET queue_status = 'Cancelled' WHERE appointment_id = ?", [id]);
+      await run(
+        `INSERT INTO notification (patient_id, appointment_id, notification_type, message, sent_time, notification_status)
+         VALUES (?, ?, 'Appointment Cancelled', ?, CURTIME(), 'Sent')`,
+        [existing.patient_id, id, `Appointment #APT-${id} has been cancelled.`]
+      );
       publishRealtimeEvent("AppointmentCancelled", { appointment_id: id });
+    } else if (appointment_date || appointment_time || doctor_id) {
+      const doc = await get<{ doctor_name: string }>("SELECT doctor_name FROM doctor WHERE doctor_id = ?", [targetDocId]);
+      await run(
+        `INSERT INTO notification (patient_id, appointment_id, notification_type, message, sent_time, notification_status)
+         VALUES (?, ?, 'Appointment Rescheduled', ?, CURTIME(), 'Sent')`,
+        [existing.patient_id, id, `Appointment rescheduled with ${doc?.doctor_name || "Doctor"} for ${newDate} at ${newTime}.`]
+      );
+      publishRealtimeEvent("AppointmentRescheduled", { appointment_id: id, doctor_id: targetDocId, date: newDate, time: newTime });
     } else {
-      publishRealtimeEvent("AppointmentRescheduled", { appointment_id: id });
+      publishRealtimeEvent("AppointmentUpdated", { appointment_id: id, status: appointment_status });
     }
 
     invalidateCacheKey(CACHE_KEYS.STATS_SUMMARY);
@@ -802,6 +860,7 @@ app.get("/api/queue", async (req: Request, res: Response) => {
         p.patient_id,
         p.first_name,
         p.last_name,
+        CONCAT(p.first_name, ' ', p.last_name) AS patient_name,
         p.date_of_birth,
         p.phone AS patient_phone,
         doc.doctor_name,
@@ -948,7 +1007,7 @@ app.post("/api/queue", async (req: Request, res: Response) => {
 app.patch("/api/queue/:id", async (req: Request, res: Response) => {
   try {
     const queueId = Number(req.params.id);
-    const { queue_status, priority_level, priority_reason } = req.body;
+    const { action, queue_status, priority_level, priority_reason } = req.body;
 
     const existing = await get<{ queue_id: number; appointment_id: number; token_number: number }>(
       "SELECT queue_id, appointment_id, token_number FROM queue_entry WHERE queue_id = ?",
@@ -958,33 +1017,58 @@ app.patch("/api/queue/:id", async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: "Queue entry not found." });
     }
 
+    let targetStatus = queue_status;
+    if (action === "call") targetStatus = "Called";
+    else if (action === "start") targetStatus = "In-Consultation";
+    else if (action === "skip") targetStatus = "Skipped";
+    else if (action === "complete") targetStatus = "Completed";
+
     const updates: string[] = [];
     const params: unknown[] = [];
 
-    if (queue_status) {
+    if (targetStatus) {
       updates.push("queue_status = ?");
-      params.push(queue_status);
-      if (queue_status === "In-Consultation" || queue_status === "Completed") {
+      params.push(targetStatus);
+      if (targetStatus === "In-Consultation" || targetStatus === "Completed") {
         updates.push("estimated_wait_time = 0");
       }
     }
     if (priority_level) { updates.push("priority_level = ?"); params.push(priority_level); }
     if (priority_reason) { updates.push("priority_reason = ?"); params.push(priority_reason); }
 
-    params.push(queueId);
-    await run(`UPDATE queue_entry SET ${updates.join(", ")} WHERE queue_id = ?`, params);
+    if (updates.length > 0) {
+      params.push(queueId);
+      await run(`UPDATE queue_entry SET ${updates.join(", ")} WHERE queue_id = ?`, params);
+    }
 
-    // Sync appointment status
-    if (queue_status === "In-Consultation") {
+    // Sync appointment status and notifications complying strictly with chk_app_status
+    if (targetStatus === "Called") {
+      const apptInfo = await get<{ patient_id: number; doctor_name: string; room_number: string }>(
+        `SELECT a.patient_id, d.doctor_name, d.room_number 
+         FROM appointment a 
+         JOIN doctor d ON a.doctor_id = d.doctor_id 
+         WHERE a.appointment_id = ?`,
+        [existing.appointment_id]
+      );
+      if (apptInfo) {
+        await run(
+          `INSERT INTO notification (patient_id, appointment_id, notification_type, message, sent_time, notification_status)
+           VALUES (?, ?, 'Patient Called', ?, CURTIME(), 'Sent')`,
+          [apptInfo.patient_id, existing.appointment_id, `Token #${existing.token_number}: Please proceed to ${apptInfo.room_number || "OPD"} for consultation with Dr. ${apptInfo.doctor_name}.`]
+        );
+      }
+    } else if (targetStatus === "In-Consultation") {
       await run("UPDATE appointment SET appointment_status = 'In-Progress' WHERE appointment_id = ?", [existing.appointment_id]);
-    } else if (queue_status === "Completed") {
+    } else if (targetStatus === "Completed") {
       await run("UPDATE appointment SET appointment_status = 'Completed' WHERE appointment_id = ?", [existing.appointment_id]);
+    } else if (targetStatus === "Cancelled") {
+      await run("UPDATE appointment SET appointment_status = 'Cancelled' WHERE appointment_id = ?", [existing.appointment_id]);
     }
 
     invalidateCacheKey(CACHE_KEYS.STATS_SUMMARY);
-    publishRealtimeEvent("QueueStatusChanged", { queue_id: queueId, queue_status });
+    publishRealtimeEvent("QueueStatusChanged", { queue_id: queueId, queue_status: targetStatus });
 
-    res.json({ success: true, message: `Queue entry transitioned to ${queue_status || "updated"}.` });
+    res.json({ success: true, message: `Queue entry transitioned to ${targetStatus || "updated"}.` });
   } catch (error) {
     console.error("Update queue error:", error);
     res.status(500).json({ success: false, error: (error as Error).message });
@@ -1002,6 +1086,7 @@ app.get("/api/visits", async (req: Request, res: Response) => {
         v.*,
         p.first_name,
         p.last_name,
+        CONCAT(p.first_name, ' ', p.last_name) AS patient_name,
         doc.doctor_name,
         d.department_name
       FROM visit v
@@ -1048,7 +1133,23 @@ app.post("/api/visits", async (req: Request, res: Response) => {
     await run("UPDATE queue_entry SET queue_status = 'Completed', estimated_wait_time = 0 WHERE appointment_id = ?", [apptId]);
     await run("UPDATE appointment SET appointment_status = 'Completed' WHERE appointment_id = ?", [apptId]);
 
+    const patientRow = await get<{ patient_id: number; doctor_name: string }>(
+      `SELECT a.patient_id, d.doctor_name 
+       FROM appointment a 
+       JOIN doctor d ON a.doctor_id = d.doctor_id 
+       WHERE a.appointment_id = ?`,
+      [apptId]
+    );
+    if (patientRow) {
+      await run(
+        `INSERT INTO notification (patient_id, appointment_id, notification_type, message, sent_time, notification_status)
+         VALUES (?, ?, 'Consultation Completed', ?, CURTIME(), 'Sent')`,
+        [patientRow.patient_id, apptId, `Consultation with Dr. ${patientRow.doctor_name} completed. Diagnosis: ${diagnosis.slice(0, 60)}.`]
+      );
+    }
+
     invalidateCacheKey(CACHE_KEYS.STATS_SUMMARY);
+    publishRealtimeEvent("ConsultationCompleted", { appointment_id: apptId, visit_id: visitRes.lastInsertId, doctor_id: docId });
     publishRealtimeEvent("QueueStatusChanged", { appointment_id: apptId, queue_status: "Completed", visit_id: visitRes.lastInsertId });
 
     res.status(201).json({
@@ -1103,7 +1204,97 @@ app.patch("/api/notifications/:id", async (req: Request, res: Response) => {
 // -----------------------------------------------------------------------------
 app.get("/api/reports", async (req: Request, res: Response) => {
   try {
-    const queryType = (req.query.type as string) || "groupby";
+    const queryType = req.query.type as string;
+
+    // Default or 'all': Return comprehensive bundle expected by ReportsTab frontend
+    if (!queryType || queryType === "all") {
+      const priorityStats = await query(`
+        SELECT 
+          priority_level,
+          COUNT(*) as patient_count,
+          ROUND(AVG(estimated_wait_time), 1) as avg_wait_time,
+          MIN(estimated_wait_time) as min_wait_time,
+          MAX(estimated_wait_time) as max_wait_time
+        FROM queue_entry
+        GROUP BY priority_level
+        ORDER BY 
+          CASE priority_level
+            WHEN 'Emergency' THEN 1
+            WHEN 'Urgent' THEN 2
+            WHEN 'Senior Citizen' THEN 3
+            WHEN 'Child/Infant' THEN 4
+            ELSE 5
+          END ASC
+      `);
+
+      const departmentStats = await query(`
+        SELECT 
+          d.department_name,
+          d.location,
+          COUNT(DISTINCT doc.doctor_id) as total_doctors,
+          COUNT(v.visit_id) as completed_visits,
+          COALESCE(SUM(v.billed_amount), 0.00) as total_revenue
+        FROM department d
+        JOIN doctor doc ON d.department_id = doc.department_id
+        LEFT JOIN visit v ON doc.doctor_id = v.doctor_id AND v.visit_status = 'Completed'
+        GROUP BY d.department_id, d.department_name, d.location
+        ORDER BY total_revenue DESC
+      `);
+
+      const doctorWorkload = await query(`
+        SELECT 
+          doc.doctor_id,
+          doc.doctor_name,
+          doc.specialization,
+          dep.department_name,
+          doc.availability_status,
+          COUNT(DISTINCT a.appointment_id) as total_appointments,
+          SUM(CASE WHEN qe.queue_status = 'Waiting' THEN 1 ELSE 0 END) as active_waiting,
+          SUM(CASE WHEN qe.queue_status = 'Completed' THEN 1 ELSE 0 END) as completed_today
+        FROM doctor doc
+        JOIN department dep ON doc.department_id = dep.department_id
+        LEFT JOIN appointment a ON doc.doctor_id = a.doctor_id
+        LEFT JOIN queue_entry qe ON a.appointment_id = qe.appointment_id
+        GROUP BY doc.doctor_id, doc.doctor_name, doc.specialization, dep.department_name, doc.availability_status
+        ORDER BY active_waiting DESC, total_appointments DESC
+      `);
+
+      const hourlyDistribution = await query(`
+        SELECT 
+          SUBSTR(check_in_time, 1, 2) as hour_of_day,
+          COUNT(*) as checkins_count
+        FROM queue_entry
+        WHERE check_in_time IS NOT NULL
+        GROUP BY SUBSTR(check_in_time, 1, 2)
+        ORDER BY hour_of_day ASC
+      `);
+
+      const doctorsAboveDeptAvg = await query(`
+        SELECT 
+          outer_doc.doctor_name,
+          outer_doc.specialization,
+          outer_doc.consultation_fee,
+          d.department_name
+        FROM doctor outer_doc
+        JOIN department d ON outer_doc.department_id = d.department_id
+        WHERE outer_doc.consultation_fee >= (
+          SELECT AVG(inner_doc.consultation_fee)
+          FROM doctor inner_doc
+          WHERE inner_doc.department_id = outer_doc.department_id
+        )
+      `);
+
+      return res.json({
+        success: true,
+        reports: {
+          priorityStats,
+          departmentStats,
+          doctorWorkload,
+          hourlyDistribution,
+          highValueDoctors: doctorsAboveDeptAvg,
+        },
+      });
+    }
 
     if (queryType === "groupby") {
       const rows = await query(`

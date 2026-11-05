@@ -163,8 +163,66 @@ async function runAcceptanceWorkflow() {
   assert.ok(statsRes.stats.completedToday > 0, "Completed today must reflect completed visits");
   console.log(`   ✓ Dashboard verified: Total Patients: ${statsRes.stats.totalPatients}, Today's Appointments: ${statsRes.stats.appointmentsToday}, Completed: ${statsRes.stats.completedToday}`);
 
+  // TEST 8: Multi-Doctor Portal Authentication & Account Verification
+  console.log("\n-> TEST 8: Multi-Doctor Portal Authentication (All 6 Doctors)...");
+  const doctorAccounts = [
+    { id: 1, email: "dr.rajesh@queuecare.hospital", name: "Dr. Rajesh Sharma" },
+    { id: 2, email: "dr.sunita@queuecare.hospital", name: "Dr. Sunita Kulkarni" },
+    { id: 3, email: "dr.vikram@queuecare.hospital", name: "Dr. Vikram Adiga" },
+    { id: 4, email: "dr.ananya@queuecare.hospital", name: "Dr. Ananya Iyer" },
+    { id: 5, email: "dr.rohan@queuecare.hospital", name: "Dr. Rohan Nair" },
+    { id: 6, email: "dr.meera@queuecare.hospital", name: "Dr. Meera Patil" },
+  ];
+
+  for (const doc of doctorAccounts) {
+    const loginRes = await fetch(`${BASE_URL}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: doc.email, password: "doctor123" }),
+    }).then(r => r.json());
+
+    assert.strictEqual(loginRes.success, true, `Login for ${doc.name} must succeed`);
+    assert.strictEqual(loginRes.user.role, "Doctor", `Role must be Doctor`);
+    assert.strictEqual(loginRes.user.linkedDoctorId, doc.id, `Linked doctor ID must be ${doc.id}`);
+    console.log(`   ✓ Verified Portal Access: ${doc.name} (Doctor ID: ${doc.id}, Email: ${doc.email})`);
+  }
+
+  // TEST 9: Cross-Module Appointment Synchronization Trace (Dr. Rajesh Sharma at 16:00)
+  console.log("\n-> TEST 9: Trace Dr. Rajesh Sharma 16:00 Appointment Across Modules...");
+  // 9.1 In All Appointments
+  const allApptsRes = await fetch(`${BASE_URL}/api/appointments`).then(r => r.json());
+  assert.strictEqual(allApptsRes.success, true, "Appointments fetch must succeed");
+  const targetAppt = allApptsRes.appointments.find(a => 
+    a.doctor_id === 1 && 
+    (a.appointment_time === "16:00:00" || a.appointment_time === "16:00")
+  );
+  assert.ok(targetAppt, "Appointment with Dr. Rajesh Sharma at 16:00 must exist");
+  assert.ok(targetAppt.patient_name, "Patient name must be non-empty string");
+  console.log(`   ✓ [Module 1: All Appointments] Found Appt #${targetAppt.appointment_id}: ${targetAppt.patient_name} with ${targetAppt.doctor_name} at ${targetAppt.appointment_time}`);
+
+  // 9.2 In Doctor-Filtered Consultations
+  const docApptsRes = await fetch(`${BASE_URL}/api/appointments?doctor_id=1`).then(r => r.json());
+  assert.strictEqual(docApptsRes.success, true);
+  const docHasAppt = docApptsRes.appointments.some(a => a.appointment_id === targetAppt.appointment_id);
+  assert.ok(docHasAppt, "Appointment must appear in Doctor Workspace assigned list");
+  console.log(`   ✓ [Module 2: Doctor Workspace] Verified in Dr. Rajesh Sharma assigned consultations`);
+
+  // 9.3 In Patient History
+  const patientHistoryRes = await fetch(`${BASE_URL}/api/appointments?patient_id=${targetAppt.patient_id}`).then(r => r.json());
+  assert.strictEqual(patientHistoryRes.success, true);
+  const patHasAppt = patientHistoryRes.appointments.some(a => a.appointment_id === targetAppt.appointment_id);
+  assert.ok(patHasAppt, "Appointment must appear in Patient's longitudinal history");
+  console.log(`   ✓ [Module 3: Patient Records] Verified in Patient #${targetAppt.patient_id} history`);
+
+  // TEST 10: Reports and Analytics Comprehensive Workload Validation
+  console.log("\n-> TEST 10: Reports and Analytics Workload...");
+  const reportsRes = await fetch(`${BASE_URL}/api/reports`).then(r => r.json());
+  assert.strictEqual(reportsRes.success, true, "Reports fetch must succeed");
+  assert.ok(reportsRes.reports.doctorWorkload.length > 0, "Doctor workload must contain data");
+  console.log(`   ✓ [Module 4: Reports & Analytics] Verified workload for ${reportsRes.reports.doctorWorkload.length} physicians`);
+
   console.log("\n============================================================");
-  console.log("  ALL 7 END-TO-END FULL-STACK ACCEPTANCE TESTS PASSED (100%)");
+  console.log("  ALL 10 END-TO-END FULL-STACK ACCEPTANCE TESTS PASSED (100%)");
   console.log("============================================================\n");
 }
 

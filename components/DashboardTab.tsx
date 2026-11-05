@@ -16,7 +16,7 @@ import {
   MapPin,
   CalendarX2,
 } from "lucide-react";
-import { DashboardStats, QueueEntry, Appointment, Patient } from "@/lib/types";
+import { DashboardStats, QueueEntry, Appointment, Patient, Doctor } from "@/lib/types";
 import { UserRole, AuthUser } from "@/lib/auth";
 
 interface DashboardTabProps {
@@ -24,6 +24,7 @@ interface DashboardTabProps {
   queue: QueueEntry[];
   appointments?: Appointment[];
   patients?: Patient[];
+  doctors?: Doctor[];
   currentRole?: UserRole;
   currentUserName?: string;
   currentUser?: AuthUser | null;
@@ -31,6 +32,7 @@ interface DashboardTabProps {
   onCallPatient: (queueId: number) => void;
   onStartConsultation: (queueId: number) => void;
   onOpenCheckIn: () => void;
+  onOpenCheckInForApp?: (appointmentId: number) => void;
   onOpenBooking: () => void;
   onOpenVisitModal?: (entry: QueueEntry) => void;
   onCancelAppointment?: (appointmentId: number) => void;
@@ -40,6 +42,7 @@ export default function DashboardTab({
   stats,
   queue,
   appointments = [],
+  doctors = [],
   currentRole = "Administrator",
   currentUserName,
   currentUser,
@@ -47,6 +50,7 @@ export default function DashboardTab({
   onCallPatient,
   onStartConsultation,
   onOpenCheckIn,
+  onOpenCheckInForApp,
   onOpenBooking,
   onOpenVisitModal,
   onCancelAppointment,
@@ -74,10 +78,17 @@ export default function DashboardTab({
     (app) => activePatientId !== undefined && app.patient_id === activePatientId
   );
 
-  // Doctor view: Filter queue for Dr. Rajesh Sharma (doctor_id = 1) or assigned doctor
-  const assignedDoctorId = currentUser?.linkedDoctorId || 1;
-  const doctorQueue = queue.filter(
-    (q) => q.doctor_id === assignedDoctorId || q.doctor_name?.toLowerCase().includes("rajesh")
+  // Dynamic Multi-Doctor Workspace logic
+  const assignedDoctorId = currentUser?.linkedDoctorId;
+  const currentDoctor = doctors.find((d) => d.doctor_id === assignedDoctorId) || doctors[0];
+  const doctorQueue = assignedDoctorId
+    ? queue.filter((q) => q.doctor_id === assignedDoctorId)
+    : queue;
+  const doctorAppointments = appointments.filter(
+    (a) => !assignedDoctorId || a.doctor_id === assignedDoctorId
+  );
+  const doctorScheduledApps = doctorAppointments.filter(
+    (a) => a.appointment_status === "Scheduled" || a.appointment_status === "Rescheduled"
   );
 
   return (
@@ -287,104 +298,215 @@ export default function DashboardTab({
       {/* 2. DOCTOR ROSTER BANNER (When viewing as Doctor persona)           */}
       {/* ----------------------------------------------------------------- */}
       {currentRole === "Doctor" && (
-        <div className="rounded-3xl border border-sky-200 bg-gradient-to-br from-sky-950 via-slate-900 to-slate-950 p-6 md:p-8 text-white shadow-xl">
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-sky-800/60 pb-5">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-400 font-bold text-slate-950 shadow-md">
-                <Stethoscope className="h-6 w-6" />
+        <div className="space-y-6">
+          <div className="rounded-3xl border border-sky-200 bg-gradient-to-br from-sky-950 via-slate-900 to-slate-950 p-6 md:p-8 text-white shadow-xl">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-sky-800/60 pb-5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-400 font-bold text-slate-950 shadow-md">
+                  <Stethoscope className="h-6 w-6" />
+                </div>
+                <div>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-900/80 px-2.5 py-0.5 text-[11px] font-bold text-sky-200 border border-sky-700/50">
+                    Doctor Clinical Workspace
+                  </span>
+                  <h2 className="mt-1 text-xl font-bold tracking-tight text-white">
+                    {currentDoctor?.doctor_name || currentUserName || "Attending Physician"}
+                  </h2>
+                  <p className="text-xs text-sky-300 font-medium mt-0.5">
+                    {currentDoctor?.specialization || "Clinical Specialist"} · {currentDoctor?.department_name || "Outpatient Clinic"} · Room {currentDoctor?.room_number || "101"} ({currentDoctor?.working_hours_start || "09:00"} – {currentDoctor?.working_hours_end || "17:00"})
+                  </p>
+                </div>
               </div>
-              <div>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-900/80 px-2.5 py-0.5 text-[11px] font-bold text-sky-200 border border-sky-700/50">
-                  Doctor Clinical Workspace
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => onNavigateTab("Appointments")}
+                  className="rounded-xl border border-sky-700 bg-sky-900/50 px-3.5 py-2 text-xs font-semibold text-sky-200 hover:bg-sky-800 transition"
+                >
+                  View All Consultations
+                </button>
+                <button
+                  onClick={() => onNavigateTab("Clinical Visits")}
+                  className="rounded-xl bg-sky-500 px-3.5 py-2 text-xs font-bold text-slate-950 hover:bg-sky-400 transition"
+                >
+                  View Past Visits
+                </button>
+              </div>
+            </div>
+
+            {/* Doctor KPI Metrics */}
+            <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3 text-slate-200">
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3.5">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Total Consultations</span>
+                <p className="text-2xl font-extrabold text-white mt-1">{doctorAppointments.length}</p>
+                <p className="text-[10px] text-sky-300 mt-0.5">{doctorScheduledApps.length} pending arrivals</p>
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3.5">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">In Waiting Queue</span>
+                <p className="text-2xl font-extrabold text-amber-400 mt-1">
+                  {doctorQueue.filter((q) => q.queue_status === "Waiting").length}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Checked-in &amp; triage ranked</p>
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3.5">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">In Consultation</span>
+                <p className="text-2xl font-extrabold text-teal-400 mt-1">
+                  {doctorQueue.filter((q) => q.queue_status === "In-Consultation").length}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Currently inside room</p>
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-3.5">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Completed Visits</span>
+                <p className="text-2xl font-extrabold text-emerald-400 mt-1">
+                  {doctorAppointments.filter((a) => a.appointment_status === "Completed").length}
+                </p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Prescriptions filed</p>
+              </div>
+            </div>
+
+            {/* Sub-section A: Active Patients in Queue */}
+            <div className="mt-7">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-sky-300 mb-3 flex items-center justify-between">
+                <span>Active Patient Queue for Examination (Checked-In)</span>
+                <span className="text-[11px] text-slate-400 normal-case">
+                  {doctorQueue.filter((q) => q.queue_status === "Waiting" || q.queue_status === "Called").length} active
                 </span>
-                <h2 className="mt-1 text-xl font-bold tracking-tight text-white">
-                  {currentUserName || "Dr. Rajesh Sharma"} · Cardiology OPD
-                </h2>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-sky-300 font-medium">
-                {doctorQueue.filter((q) => q.queue_status === "Waiting").length} waiting in your queue
-              </span>
-              <button
-                onClick={() => onNavigateTab("Clinical Visits")}
-                className="rounded-xl bg-sky-500 px-3.5 py-2 text-xs font-bold text-slate-950 hover:bg-sky-400 transition"
-              >
-                View Past Consultations
-              </button>
-            </div>
-          </div>
+              </h3>
+              {doctorQueue.length > 0 ? (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {doctorQueue.map((entry) => (
+                    <div
+                      key={entry.queue_id}
+                      className="rounded-2xl border border-slate-800 bg-slate-900/90 p-4 shadow-sm"
+                    >
+                      <div className="flex items-start justify-between">
+                        <span className="rounded-lg bg-slate-800 px-2.5 py-1 font-mono text-xs font-bold text-sky-300">
+                          #{entry.token_number}
+                        </span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                            entry.priority_level === "Emergency"
+                              ? "bg-rose-900/80 text-rose-300 border border-rose-700 animate-pulse"
+                              : entry.priority_level === "Urgent"
+                              ? "bg-amber-900/80 text-amber-300 border border-amber-700"
+                              : "bg-slate-800 text-slate-300"
+                          }`}
+                        >
+                          {entry.priority_level}
+                        </span>
+                      </div>
 
-          <div className="mt-5">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-sky-300 mb-3">
-              Today&apos;s Assigned Patients for Examination
-            </h3>
-            {doctorQueue.length > 0 ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {doctorQueue.map((entry) => (
-                  <div
-                    key={entry.queue_id}
-                    className="rounded-2xl border border-slate-800 bg-slate-900/90 p-4 shadow-sm"
-                  >
-                    <div className="flex items-start justify-between">
-                      <span className="rounded-lg bg-slate-800 px-2.5 py-1 font-mono text-xs font-bold text-sky-300">
-                        #{entry.token_number}
-                      </span>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                          entry.priority_level === "Emergency"
-                            ? "bg-rose-900/80 text-rose-300 border border-rose-700 animate-pulse"
-                            : entry.priority_level === "Urgent"
-                            ? "bg-amber-900/80 text-amber-300 border border-amber-700"
-                            : "bg-slate-800 text-slate-300"
-                        }`}
-                      >
-                        {entry.priority_level}
-                      </span>
-                    </div>
+                      <p className="mt-2 font-bold text-white text-sm">{entry.patient_name}</p>
+                      <p className="text-xs text-slate-400 truncate mt-0.5">
+                        {entry.priority_reason || "Scheduled OPD Consultation"}
+                      </p>
 
-                    <p className="mt-2 font-bold text-white text-sm">{entry.patient_name}</p>
-                    <p className="text-xs text-slate-400 truncate mt-0.5">
-                      {entry.priority_reason || "Scheduled OPD Consultation"}
-                    </p>
-
-                    <div className="mt-4 flex items-center justify-between border-t border-slate-800 pt-3">
-                      <span className="text-xs font-medium text-slate-400">
-                        Status: <strong className="text-white">{entry.queue_status}</strong>
-                      </span>
-                      <div className="flex gap-1.5">
-                        {entry.queue_status === "Waiting" && (
-                          <button
-                            onClick={() => onCallPatient(entry.queue_id)}
-                            className="rounded-lg bg-sky-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-sky-500"
-                          >
-                            Call
-                          </button>
-                        )}
-                        {(entry.queue_status === "Called" || entry.queue_status === "Waiting") && (
-                          <button
-                            onClick={() => onStartConsultation(entry.queue_id)}
-                            className="rounded-lg bg-teal-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-teal-500"
-                          >
-                            Start
-                          </button>
-                        )}
-                        {entry.queue_status === "In-Consultation" && onOpenVisitModal && (
-                          <button
-                            onClick={() => onOpenVisitModal(entry)}
-                            className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-500"
-                          >
-                            Complete Visit
-                          </button>
-                        )}
+                      <div className="mt-4 flex items-center justify-between border-t border-slate-800 pt-3">
+                        <span className="text-xs font-medium text-slate-400">
+                          Status: <strong className="text-white">{entry.queue_status}</strong>
+                        </span>
+                        <div className="flex gap-1.5">
+                          {entry.queue_status === "Waiting" && (
+                            <button
+                              onClick={() => onCallPatient(entry.queue_id)}
+                              className="rounded-lg bg-sky-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-sky-500"
+                            >
+                              Call
+                            </button>
+                          )}
+                          {(entry.queue_status === "Called" || entry.queue_status === "Waiting") && (
+                            <button
+                              onClick={() => onStartConsultation(entry.queue_id)}
+                              className="rounded-lg bg-teal-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-teal-500"
+                            >
+                              Start
+                            </button>
+                          )}
+                          {entry.queue_status === "In-Consultation" && onOpenVisitModal && (
+                            <button
+                              onClick={() => onOpenVisitModal(entry)}
+                              className="rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-500"
+                            >
+                              Complete Visit
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-800 p-5 text-center text-xs text-slate-400">
+                  No checked-in patients currently waiting in your queue.
+                </div>
+              )}
+            </div>
+
+            {/* Sub-section B: Assigned Scheduled Consultations (Upcoming Arrivals) */}
+            <div className="mt-7 border-t border-slate-800/80 pt-6">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-sky-300">
+                  Upcoming Assigned Consultations ({doctorScheduledApps.length} Scheduled)
+                </h3>
+                <span className="text-[11px] text-slate-400">
+                  Scheduled bookings enter the active queue upon patient check-in
+                </span>
               </div>
-            ) : (
-              <p className="text-xs text-slate-400">No active patients currently assigned in your queue.</p>
-            )}
+
+              {doctorScheduledApps.length > 0 ? (
+                <div className="rounded-2xl border border-slate-800 bg-slate-900/60 overflow-hidden">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-950/80 text-slate-400 uppercase tracking-wider text-[10px]">
+                      <tr>
+                        <th className="py-2.5 px-3.5">Appt ID</th>
+                        <th className="py-2.5 px-3.5">Date &amp; Time</th>
+                        <th className="py-2.5 px-3.5">Patient Name</th>
+                        <th className="py-2.5 px-3.5">Reason / Type</th>
+                        <th className="py-2.5 px-3.5">Status</th>
+                        <th className="py-2.5 px-3.5 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                      {doctorScheduledApps.map((app) => (
+                        <tr key={app.appointment_id} className="hover:bg-slate-800/40">
+                          <td className="py-2.5 px-3.5 font-mono text-sky-300 font-bold">
+                            #APT-{app.appointment_id}
+                          </td>
+                          <td className="py-2.5 px-3.5">
+                            <span className="font-semibold text-white">{app.appointment_date}</span>
+                            <span className="ml-2 font-mono text-teal-400 font-bold">{app.appointment_time?.slice(0, 5)}</span>
+                          </td>
+                          <td className="py-2.5 px-3.5 font-semibold text-white">
+                            {app.patient_name}
+                          </td>
+                          <td className="py-2.5 px-3.5 text-slate-400">
+                            {app.reason_for_visit || "General consultation"} ({app.appointment_type})
+                          </td>
+                          <td className="py-2.5 px-3.5">
+                            <span className="rounded-full bg-teal-900/60 border border-teal-700 px-2 py-0.5 text-[10px] font-bold text-teal-300">
+                              {app.appointment_status}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3.5 text-right">
+                            {app.appointment_status === "Scheduled" && onOpenCheckInForApp && (
+                              <button
+                                onClick={() => onOpenCheckInForApp(app.appointment_id)}
+                                className="rounded-lg bg-teal-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-teal-500 shadow-xs"
+                              >
+                                Check In
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-800 p-5 text-center text-xs text-slate-400">
+                  No scheduled consultations currently booked for this doctor.
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -673,6 +795,106 @@ export default function DashboardTab({
           </div>
         </div>
       </div>
+
+      {/* ----------------------------------------------------------------- */}
+      {/* 5. OUTPATIENT SCHEDULE & INTAKE ARRIVALS (ADMIN & RECEPTIONIST)   */}
+      {/* ----------------------------------------------------------------- */}
+      {currentRole !== "Patient" && currentRole !== "Doctor" && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+            <div>
+              <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-teal-600" />
+                Scheduled Outpatient Consultations &amp; Intake Desk
+              </h3>
+              <p className="text-xs text-slate-500">
+                Booked patients awaiting hospital arrival and queue check-in.
+              </p>
+            </div>
+            <button
+              onClick={() => onNavigateTab("Appointments")}
+              className="text-xs font-semibold text-teal-600 hover:text-teal-700 hover:underline flex items-center gap-1"
+            >
+              All Appointments Schedule <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider text-[10px]">
+                <tr>
+                  <th className="py-2.5 px-3">Appt ID</th>
+                  <th className="py-2.5 px-3">Date &amp; Time</th>
+                  <th className="py-2.5 px-3">Patient</th>
+                  <th className="py-2.5 px-3">Doctor &amp; Department</th>
+                  <th className="py-2.5 px-3">Reason / Type</th>
+                  <th className="py-2.5 px-3">Status</th>
+                  <th className="py-2.5 px-3 text-right">Intake Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {appointments.slice(0, 10).map((app) => (
+                  <tr key={app.appointment_id} className="hover:bg-slate-50 transition">
+                    <td className="py-2.5 px-3 font-mono font-bold text-teal-700">
+                      #APT-{app.appointment_id}
+                    </td>
+                    <td className="py-2.5 px-3 font-medium">
+                      <span className="font-bold text-slate-900">{app.appointment_date}</span>
+                      <span className="ml-2 font-mono text-teal-700 font-bold">{app.appointment_time?.slice(0, 5)}</span>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <p className="font-bold text-slate-900">{app.patient_name}</p>
+                      <p className="text-[10px] text-slate-400">{app.patient_phone || "No phone"}</p>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <p className="font-semibold text-slate-800">{app.doctor_name}</p>
+                      <p className="text-[10px] text-slate-400">{app.department_name}</p>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">
+                        {app.appointment_type}
+                      </span>
+                      {app.reason_for_visit && (
+                        <p className="text-[10px] text-slate-500 truncate max-w-xs italic">{app.reason_for_visit}</p>
+                      )}
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                          app.appointment_status === "Completed"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : app.appointment_status === "Checked-In"
+                            ? "bg-purple-100 text-purple-800"
+                            : "bg-teal-100 text-teal-800"
+                        }`}
+                      >
+                        {app.appointment_status}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 text-right">
+                      {app.appointment_status === "Scheduled" && onOpenCheckInForApp && (
+                        <button
+                          onClick={() => onOpenCheckInForApp(app.appointment_id)}
+                          className="rounded-lg bg-teal-600 px-3 py-1 text-xs font-semibold text-white hover:bg-teal-700 transition shadow-xs"
+                        >
+                          Check In
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {appointments.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="py-6 text-center text-xs text-slate-400">
+                      No scheduled appointments currently booked.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

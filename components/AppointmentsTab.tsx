@@ -2,12 +2,15 @@
 
 import React, { useState } from "react";
 import { Search } from "lucide-react";
-import { Appointment } from "@/lib/types";
+import { Appointment, Doctor, Department } from "@/lib/types";
+import { UserRole, AuthUser } from "@/lib/auth";
 
 interface AppointmentsTabProps {
   appointments: Appointment[];
-  doctors?: unknown[];
-  departments?: unknown[];
+  doctors?: Doctor[];
+  departments?: Department[];
+  currentRole?: UserRole;
+  currentUser?: AuthUser | null;
   onOpenBooking: () => void;
   onOpenCheckInForApp: (appId: number) => void;
   onCancelAppointment: (appId: number) => void;
@@ -16,6 +19,10 @@ interface AppointmentsTabProps {
 
 export default function AppointmentsTab({
   appointments,
+  doctors = [],
+  departments = [],
+  currentRole = "Administrator",
+  currentUser,
   onOpenBooking,
   onOpenCheckInForApp,
   onCancelAppointment,
@@ -23,9 +30,22 @@ export default function AppointmentsTab({
 }: AppointmentsTabProps) {
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [selectedStatus, setSelectedStatus] = useState<string>("");
+  const [selectedDoctorFilter, setSelectedDoctorFilter] = useState<string>(
+    currentRole === "Doctor" && currentUser?.linkedDoctorId ? String(currentUser.linkedDoctorId) : ""
+  );
   const [searchQuery, setSearchQuery] = useState<string>("");
 
+  const [selectedDeptFilter, setSelectedDeptFilter] = useState<string>("");
+
   const filtered = appointments.filter((a) => {
+    // If logged in as Doctor, restrict to doctor's assigned consultations
+    if (currentRole === "Doctor" && currentUser?.linkedDoctorId) {
+      if (a.doctor_id !== currentUser.linkedDoctorId) return false;
+    } else if (selectedDoctorFilter && a.doctor_id !== Number(selectedDoctorFilter)) {
+      return false;
+    }
+
+    if (selectedDeptFilter && a.department_name !== selectedDeptFilter) return false;
     if (selectedDate && a.appointment_date !== selectedDate) return false;
     if (selectedStatus && a.appointment_status !== selectedStatus) return false;
     if (searchQuery) {
@@ -44,18 +64,24 @@ export default function AppointmentsTab({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold tracking-tight text-slate-900">
-            Outpatient Appointment Schedule
+            {currentRole === "Doctor"
+              ? `Assigned Consultations — ${currentUser?.name || "Doctor"}`
+              : "Outpatient Appointment Schedule"}
           </h2>
           <p className="text-xs text-slate-500">
-            Manage consultations, check in arrivals, and reschedule appointments.
+            {currentRole === "Doctor"
+              ? "All scheduled and active consultations assigned directly to your outpatient roster."
+              : "Manage hospital consultations, check in arriving patients, and handle rescheduling."}
           </p>
         </div>
-        <button
-          onClick={onOpenBooking}
-          className="rounded-xl bg-teal-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-teal-700 transition"
-        >
-          + Book New Appointment
-        </button>
+        {currentRole !== "Doctor" && (
+          <button
+            onClick={onOpenBooking}
+            className="rounded-xl bg-teal-600 px-4 py-2.5 text-xs font-semibold text-white shadow-sm hover:bg-teal-700 transition"
+          >
+            + Book New Appointment
+          </button>
+        )}
       </div>
 
       {/* Filters */}
@@ -96,12 +122,51 @@ export default function AppointmentsTab({
           </select>
         </div>
 
-        {selectedDate && (
+        {currentRole !== "Doctor" && doctors.length > 0 && (
+          <div>
+            <select
+              value={selectedDoctorFilter}
+              onChange={(e) => setSelectedDoctorFilter(e.target.value)}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-slate-700 focus:border-teal-500 focus:outline-none"
+            >
+              <option value="">All Physicians</option>
+              {doctors.map((d) => (
+                <option key={d.doctor_id} value={String(d.doctor_id)}>
+                  {d.doctor_name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {departments.length > 0 && (
+          <div>
+            <select
+              value={selectedDeptFilter}
+              onChange={(e) => setSelectedDeptFilter(e.target.value)}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-slate-700 focus:border-teal-500 focus:outline-none"
+            >
+              <option value="">All Departments</option>
+              {departments.map((dept) => (
+                <option key={dept.department_id} value={dept.department_name}>
+                  {dept.department_name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {(selectedDate || selectedStatus || selectedDoctorFilter || selectedDeptFilter) && (
           <button
-            onClick={() => setSelectedDate("")}
+            onClick={() => {
+              setSelectedDate("");
+              setSelectedStatus("");
+              if (currentRole !== "Doctor") setSelectedDoctorFilter("");
+              setSelectedDeptFilter("");
+            }}
             className="text-xs text-teal-600 hover:underline font-semibold"
           >
-            Clear Date
+            Clear Filters
           </button>
         )}
       </div>

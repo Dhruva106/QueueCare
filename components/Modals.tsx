@@ -256,6 +256,7 @@ interface CheckInModalProps {
   isOpen: boolean;
   onClose: () => void;
   appointments: Appointment[];
+  initialAppointmentId?: number | null;
   onCheckInSuccess: () => void;
 }
 
@@ -263,9 +264,10 @@ export function CheckInModal({
   isOpen,
   onClose,
   appointments,
+  initialAppointmentId,
   onCheckInSuccess,
 }: CheckInModalProps) {
-  const [appointmentId, setAppointmentId] = useState("");
+  const [selectedId, setSelectedId] = useState("");
   const [customPriority, setCustomPriority] = useState<PriorityLevel>("Normal");
   const [customReason, setCustomReason] = useState("");
   const [isOverride, setIsOverride] = useState(false);
@@ -277,6 +279,8 @@ export function CheckInModal({
   const eligibleAppointments = appointments.filter(
     (a) => a.appointment_status === "Scheduled" || a.appointment_status === "Rescheduled"
   );
+
+  const appointmentId = selectedId || (initialAppointmentId ? String(initialAppointmentId) : (eligibleAppointments[0]?.appointment_id ? String(eligibleAppointments[0].appointment_id) : ""));
 
   const selectedApp = eligibleAppointments.find((a) => a.appointment_id === Number(appointmentId));
   const autoTriage = selectedApp
@@ -345,7 +349,7 @@ export function CheckInModal({
             <select
               required
               value={appointmentId}
-              onChange={(e) => setAppointmentId(e.target.value)}
+              onChange={(e) => setSelectedId(e.target.value)}
               className="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:border-teal-500 focus:outline-none"
             >
               <option value="">-- Choose scheduled patient --</option>

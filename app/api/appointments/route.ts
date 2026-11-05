@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     let sql = `
       SELECT 
         a.*,
-        p.first_name || ' ' || p.last_name as patient_name,
+        CONCAT(p.first_name, ' ', p.last_name) as patient_name,
         p.phone as patient_phone,
         p.date_of_birth as patient_dob,
         doc.doctor_name,

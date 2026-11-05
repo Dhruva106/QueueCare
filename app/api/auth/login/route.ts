@@ -24,7 +24,7 @@ interface UserRow {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email, password, demoRole, demoKey, patientId } = body;
+    const { email, password, demoRole, demoKey, patientId, doctorId } = body;
 
     let user: AuthUser | null = null;
 
@@ -45,6 +45,26 @@ export async function POST(request: NextRequest) {
           email: pRow.email || `patient${pRow.patient_id}@queuecare.hospital`,
           role: "Patient",
           linkedPatientId: pRow.patient_id,
+        };
+      }
+    }
+
+    // 1b. Dynamic sign-in as any registered doctor (Multi-Doctor Portal)
+    const reqDocId = doctorId || (typeof demoKey === "string" && demoKey.startsWith("doctor:") ? Number(demoKey.split(":")[1]) : undefined);
+    if (!user && reqDocId) {
+      const did = Number(reqDocId);
+      const doc = await get<{ doctor_id: number; doctor_name: string; email: string }>(
+        "SELECT doctor_id, doctor_name, email FROM doctor WHERE doctor_id = ?",
+        [did]
+      );
+      if (doc) {
+        const uRow = await get<{ user_id: number }>("SELECT user_id FROM users WHERE linked_doctor_id = ? OR email = ?", [did, doc.email]);
+        user = {
+          id: uRow?.user_id || (2000 + did),
+          name: doc.doctor_name,
+          email: doc.email || `doctor${did}@queuecare.hospital`,
+          role: "Doctor",
+          linkedDoctorId: did,
         };
       }
     }

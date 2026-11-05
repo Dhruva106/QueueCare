@@ -78,6 +78,7 @@ export default function Home() {
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [visitModalEntry, setVisitModalEntry] = useState<QueueEntry | null>(null);
   const [historyPatient, setHistoryPatient] = useState<Patient | null>(null);
+  const [checkInAppId, setCheckInAppId] = useState<number | null>(null);
   const [rescheduleApp, setRescheduleApp] = useState<Appointment | null>(null);
   const [rescheduleDate, setRescheduleDate] = useState("");
   const [rescheduleTime, setRescheduleTime] = useState("");
@@ -184,12 +185,12 @@ export default function Home() {
   };
 
   // Role / Persona switching handler: Updates backend session cookie & audit log
-  const handleSwitchPersona = async (personaKey: string, patientId?: number) => {
+  const handleSwitchPersona = async (personaKey: string, patientId?: number, doctorId?: number) => {
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ demoKey: personaKey, patientId }),
+        body: JSON.stringify({ demoKey: personaKey, patientId, doctorId }),
       });
       const data = await res.json();
       if (data.success && data.user) {
@@ -435,6 +436,7 @@ export default function Home() {
           currentUserName={currentUser?.name}
           currentUser={currentUser}
           patients={patients}
+          doctors={doctors}
           onSwitchPersona={handleSwitchPersona}
           waitingCount={stats.waitingPatients}
           isRealtimeConnected={isRealtimeConnected}
@@ -463,6 +465,7 @@ export default function Home() {
                   queue={queue}
                   appointments={appointments}
                   patients={patients}
+                  doctors={doctors}
                   currentRole={currentRole}
                   currentUserName={currentUser?.name}
                   currentUser={currentUser}
@@ -470,6 +473,10 @@ export default function Home() {
                   onCallPatient={handleCallPatient}
                   onStartConsultation={handleStartConsultation}
                   onOpenCheckIn={() => setIsCheckInOpen(true)}
+                  onOpenCheckInForApp={(appId) => {
+                    setCheckInAppId(appId);
+                    setIsCheckInOpen(true);
+                  }}
                   onOpenBooking={() => {
                     setSelectedDoctorForBooking(null);
                     if (currentRole === "Patient") {
@@ -487,6 +494,8 @@ export default function Home() {
                   queue={queue}
                   doctors={doctors}
                   departments={departments}
+                  currentRole={currentRole}
+                  currentUser={currentUser}
                   onCallPatient={handleCallPatient}
                   onStartConsultation={handleStartConsultation}
                   onSkipPatient={handleSkipPatient}
@@ -502,6 +511,8 @@ export default function Home() {
                   appointments={appointments}
                   doctors={doctors}
                   departments={departments}
+                  currentRole={currentRole}
+                  currentUser={currentUser}
                   onOpenBooking={() => {
                     setSelectedDoctorForBooking(null);
                     if (currentRole === "Patient") {
@@ -509,7 +520,10 @@ export default function Home() {
                     }
                     setIsBookingOpen(true);
                   }}
-                  onOpenCheckInForApp={() => setIsCheckInOpen(true)}
+                  onOpenCheckInForApp={(appId) => {
+                    setCheckInAppId(appId);
+                    setIsCheckInOpen(true);
+                  }}
                   onCancelAppointment={handleCancelAppointment}
                   onRescheduleAppointment={(app) => {
                     setRescheduleApp(app);
@@ -565,7 +579,13 @@ export default function Home() {
                 />
               )}
 
-              {activeTab === "Clinical Visits" && <VisitsTab visits={visits} />}
+              {activeTab === "Clinical Visits" && (
+                <VisitsTab
+                  visits={visits}
+                  currentRole={currentRole}
+                  currentUser={currentUser}
+                />
+              )}
 
               {activeTab === "Reports & Analytics" && <ReportsTab />}
 
@@ -609,7 +629,11 @@ export default function Home() {
       {/* Check-In Modal */}
       <CheckInModal
         isOpen={isCheckInOpen}
-        onClose={() => setIsCheckInOpen(false)}
+        onClose={() => {
+          setIsCheckInOpen(false);
+          setCheckInAppId(null);
+        }}
+        initialAppointmentId={checkInAppId}
         appointments={appointments}
         onCheckInSuccess={() => {
           showToast("Patient checked into queue and token issued.");

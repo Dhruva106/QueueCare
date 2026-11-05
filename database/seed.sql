@@ -82,9 +82,14 @@ INSERT INTO notification (notification_id, patient_id, appointment_id, notificat
 INSERT INTO users (user_id, email, password_hash, salt, name, role, linked_staff_id, linked_patient_id, linked_doctor_id) VALUES
 (1, 'dhruva.admin@queuecare.hospital', '14841a5da9d748ee4c2bec4eeefb7315b7c4151d0e763a3bdcd2e2be047ab62ba9665455f032957548c039539f703f8d92bec5fe4f8a2bd106a7c8aa1f8d7a23', '1327a378b9c7dfc4944e19a09f8ab83a', 'Dhruva G Hegde', 'Administrator', 1, NULL, NULL),
 (2, 'pramath.admin@queuecare.hospital', '14841a5da9d748ee4c2bec4eeefb7315b7c4151d0e763a3bdcd2e2be047ab62ba9665455f032957548c039539f703f8d92bec5fe4f8a2bd106a7c8aa1f8d7a23', '1327a378b9c7dfc4944e19a09f8ab83a', 'Pramath G Hegde', 'Administrator', 2, NULL, NULL),
-(3, 'dr.rajesh@queuecare.hospital', '14841a5da9d748ee4c2bec4eeefb7315b7c4151d0e763a3bdcd2e2be047ab62ba9665455f032957548c039539f703f8d92bec5fe4f8a2bd106a7c8aa1f8d7a23', '1327a378b9c7dfc4944e19a09f8ab83a', 'Dr. Rajesh Sharma', 'Doctor', NULL, NULL, 1),
+(3, 'dr.rajesh@queuecare.hospital', '265a90496ac957d5a64b711422f1e5895c18d1009c5a2473535a49b7c8cc9d3250962a54c6b941ae2c74b19bab4a4ae0ded0ae47f3cbd9ce50562e63b9032b04', '1327a378b9c7dfc4944e19a09f8ab83a', 'Dr. Rajesh Sharma', 'Doctor', NULL, NULL, 1),
 (4, 'kavya.r@queuecare.hospital', '14841a5da9d748ee4c2bec4eeefb7315b7c4151d0e763a3bdcd2e2be047ab62ba9665455f032957548c039539f703f8d92bec5fe4f8a2bd106a7c8aa1f8d7a23', '1327a378b9c7dfc4944e19a09f8ab83a', 'Kavya Raman', 'Receptionist', 3, NULL, NULL),
-(5, 'patient@queuecare.hospital', '14841a5da9d748ee4c2bec4eeefb7315b7c4151d0e763a3bdcd2e2be047ab62ba9665455f032957548c039539f703f8d92bec5fe4f8a2bd106a7c8aa1f8d7a23', '1327a378b9c7dfc4944e19a09f8ab83a', 'Aarav Sharma', 'Patient', NULL, 1, NULL);
+(5, 'patient@queuecare.hospital', '14841a5da9d748ee4c2bec4eeefb7315b7c4151d0e763a3bdcd2e2be047ab62ba9665455f032957548c039539f703f8d92bec5fe4f8a2bd106a7c8aa1f8d7a23', '1327a378b9c7dfc4944e19a09f8ab83a', 'Aarav Sharma', 'Patient', NULL, 1, NULL),
+(6, 'dr.sunita@queuecare.hospital', '265a90496ac957d5a64b711422f1e5895c18d1009c5a2473535a49b7c8cc9d3250962a54c6b941ae2c74b19bab4a4ae0ded0ae47f3cbd9ce50562e63b9032b04', '1327a378b9c7dfc4944e19a09f8ab83a', 'Dr. Sunita Kulkarni', 'Doctor', NULL, NULL, 2),
+(7, 'dr.vikram@queuecare.hospital', '265a90496ac957d5a64b711422f1e5895c18d1009c5a2473535a49b7c8cc9d3250962a54c6b941ae2c74b19bab4a4ae0ded0ae47f3cbd9ce50562e63b9032b04', '1327a378b9c7dfc4944e19a09f8ab83a', 'Dr. Vikram Adiga', 'Doctor', NULL, NULL, 3),
+(8, 'dr.ananya@queuecare.hospital', '265a90496ac957d5a64b711422f1e5895c18d1009c5a2473535a49b7c8cc9d3250962a54c6b941ae2c74b19bab4a4ae0ded0ae47f3cbd9ce50562e63b9032b04', '1327a378b9c7dfc4944e19a09f8ab83a', 'Dr. Ananya Iyer', 'Doctor', NULL, NULL, 4),
+(9, 'dr.rohan@queuecare.hospital', '265a90496ac957d5a64b711422f1e5895c18d1009c5a2473535a49b7c8cc9d3250962a54c6b941ae2c74b19bab4a4ae0ded0ae47f3cbd9ce50562e63b9032b04', '1327a378b9c7dfc4944e19a09f8ab83a', 'Dr. Rohan Nair', 'Doctor', NULL, NULL, 5),
+(10, 'dr.meera@queuecare.hospital', '265a90496ac957d5a64b711422f1e5895c18d1009c5a2473535a49b7c8cc9d3250962a54c6b941ae2c74b19bab4a4ae0ded0ae47f3cbd9ce50562e63b9032b04', '1327a378b9c7dfc4944e19a09f8ab83a', 'Dr. Meera Patil', 'Doctor', NULL, NULL, 6);
 
 -- 10. Insert Initial Clinical Audit Log Entries
 INSERT INTO audit_log (log_id, action, performed_by, entity, entity_id, details) VALUES

@@ -3,15 +3,21 @@
 import React, { useState } from "react";
 import { Search, Pill } from "lucide-react";
 import { Visit } from "@/lib/types";
+import { UserRole, AuthUser } from "@/lib/auth";
 
 interface VisitsTabProps {
   visits: Visit[];
+  currentRole?: UserRole;
+  currentUser?: AuthUser | null;
 }
 
-export default function VisitsTab({ visits }: VisitsTabProps) {
+export default function VisitsTab({ visits, currentRole = "Administrator", currentUser }: VisitsTabProps) {
   const [search, setSearch] = useState("");
 
   const filtered = visits.filter((v) => {
+    if (currentRole === "Doctor" && currentUser?.linkedDoctorId) {
+      if (v.doctor_id !== currentUser.linkedDoctorId) return false;
+    }
     if (!search) return true;
     const q = search.toLowerCase();
     return (
@@ -26,10 +32,14 @@ export default function VisitsTab({ visits }: VisitsTabProps) {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold tracking-tight text-slate-900">
-            Clinical Encounters & Medical Records
+            {currentRole === "Doctor"
+              ? `My Clinical Encounters & Prescriptions — ${currentUser?.name || "Doctor"}`
+              : "Clinical Encounters & Medical Records"}
           </h2>
           <p className="text-xs text-slate-500">
-            Completed consultations, electronic prescriptions, physician notes, and billing history.
+            {currentRole === "Doctor"
+              ? "Completed consultations, electronic prescriptions, physician notes, and billing history for your patients."
+              : "Completed consultations, electronic prescriptions, physician notes, and billing history across all departments."}
           </p>
         </div>
       </div>

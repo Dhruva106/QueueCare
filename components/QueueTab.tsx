@@ -3,11 +3,14 @@
 import React, { useState } from "react";
 import { Search } from "lucide-react";
 import { QueueEntry, Doctor, Department, PriorityLevel } from "@/lib/types";
+import { UserRole, AuthUser } from "@/lib/auth";
 
 interface QueueTabProps {
   queue: QueueEntry[];
   doctors: Doctor[];
   departments: Department[];
+  currentRole?: UserRole;
+  currentUser?: AuthUser | null;
   onCallPatient: (queueId: number) => void;
   onStartConsultation: (queueId: number) => void;
   onSkipPatient: (queueId: number) => void;
@@ -21,6 +24,8 @@ export default function QueueTab({
   queue,
   doctors,
   departments,
+  currentRole = "Administrator",
+  currentUser,
   onCallPatient,
   onStartConsultation,
   onSkipPatient,
@@ -29,7 +34,9 @@ export default function QueueTab({
   onOverridePriority,
 }: QueueTabProps) {
   const [selectedDept, setSelectedDept] = useState<string>("");
-  const [selectedDoc, setSelectedDoc] = useState<string>("");
+  const [selectedDoc, setSelectedDoc] = useState<string>(
+    currentRole === "Doctor" && currentUser?.linkedDoctorId ? String(currentUser.linkedDoctorId) : ""
+  );
   const [selectedStatus, setSelectedStatus] = useState<string>("Active");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
@@ -39,8 +46,14 @@ export default function QueueTab({
   const [overrideReason, setOverrideReason] = useState("");
 
   const filteredQueue = queue.filter((entry) => {
+    // If Doctor persona, restrict to their patient queue
+    if (currentRole === "Doctor" && currentUser?.linkedDoctorId) {
+      if (entry.doctor_id !== currentUser.linkedDoctorId) return false;
+    } else if (selectedDoc && entry.doctor_id !== Number(selectedDoc)) {
+      return false;
+    }
+
     if (selectedDept && entry.department_name !== selectedDept) return false;
-    if (selectedDoc && entry.doctor_id !== Number(selectedDoc)) return false;
 
     if (selectedStatus === "Active") {
       if (entry.queue_status === "Completed" || entry.queue_status === "Cancelled") return false;
@@ -73,10 +86,14 @@ export default function QueueTab({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-bold tracking-tight text-slate-900">
-            Live Outpatient Queue Monitor
+            {currentRole === "Doctor"
+              ? `My Patient Queue — ${currentUser?.name || "Doctor"}`
+              : "Live Outpatient Queue Monitor"}
           </h2>
           <p className="text-xs text-slate-500">
-            Dynamic triage and consultation dispatching for outpatient clinics.
+            {currentRole === "Doctor"
+              ? "Checked-in patients ranked by priority tier and wait times waiting for your consultation."
+              : "Dynamic triage and consultation dispatching for outpatient clinics."}
           </p>
         </div>
         <button

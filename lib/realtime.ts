@@ -11,9 +11,11 @@ export type RealtimeEventType =
   | "AppointmentBooked"
   | "AppointmentCancelled"
   | "AppointmentRescheduled"
+  | "AppointmentUpdated"
   | "PatientCheckedIn"
   | "QueueEntryUpdated"
   | "QueueStatusChanged"
+  | "ConsultationCompleted"
   | "PriorityOverridden"
   | "StatsUpdated";
 

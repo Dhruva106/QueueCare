@@ -14,8 +14,10 @@ import { hashPassword } from "./auth";
 
 export type DBEngine = "mysql" | "sqlite";
 
-let sqliteInstance: BetterSqliteDatabase | null = null;
-let mysqlPool: unknown = null;
+const globalForDb = globalThis as unknown as {
+  __queuecare_sqlite_instance__?: BetterSqliteDatabase | null;
+  __queuecare_mysql_pool__?: unknown | null;
+};
 
 // Determine target database engine
 export function getDatabaseType(): DBEngine {
@@ -29,7 +31,7 @@ export function getDatabaseType(): DBEngine {
  * Initializes and returns SQLite connection with custom MySQL-compatible functions
  */
 function getSqliteDb(): BetterSqliteDatabase {
-  if (sqliteInstance) return sqliteInstance;
+  if (globalForDb.__queuecare_sqlite_instance__) return globalForDb.__queuecare_sqlite_instance__;
 
   const dataDir = path.resolve(process.cwd(), "data");
   if (!fs.existsSync(dataDir)) {
@@ -47,12 +49,13 @@ function getSqliteDb(): BetterSqliteDatabase {
   db.function("CURDATE", () => new Date().toISOString().split("T")[0]);
   db.function("CURTIME", () => new Date().toTimeString().split(" ")[0]);
   db.function("NOW", () => new Date().toISOString().replace("T", " ").slice(0, 19));
+  db.function("CONCAT", (...args: unknown[]) => args.map((a) => (a === null || a === undefined ? "" : String(a))).join(""));
 
   // Initialize schema if not present
   initializeTablesIfMissing(db);
 
-  sqliteInstance = db;
-  return sqliteInstance;
+  globalForDb.__queuecare_sqlite_instance__ = db;
+  return db;
 }
 
 /**
@@ -314,6 +317,11 @@ function seedInitialData(db: BetterSqliteDatabase) {
 
   const docAuth = hashPassword("doctor123");
   insertUser.run(4, "dr.rajesh@queuecare.hospital", docAuth.hash, docAuth.salt, "Dr. Rajesh Sharma", "Doctor", null, 1, null);
+  insertUser.run(9, "dr.sunita@queuecare.hospital", docAuth.hash, docAuth.salt, "Dr. Sunita Kulkarni", "Doctor", null, 2, null);
+  insertUser.run(10, "dr.vikram@queuecare.hospital", docAuth.hash, docAuth.salt, "Dr. Vikram Adiga", "Doctor", null, 3, null);
+  insertUser.run(11, "dr.ananya@queuecare.hospital", docAuth.hash, docAuth.salt, "Dr. Ananya Iyer", "Doctor", null, 4, null);
+  insertUser.run(12, "dr.rohan@queuecare.hospital", docAuth.hash, docAuth.salt, "Dr. Rohan Nair", "Doctor", null, 5, null);
+  insertUser.run(13, "dr.meera@queuecare.hospital", docAuth.hash, docAuth.salt, "Dr. Meera Patil", "Doctor", null, 6, null);
 
   const staffAuth = hashPassword("staff123");
   insertUser.run(5, "kavya.r@queuecare.hospital", staffAuth.hash, staffAuth.salt, "Kavya Raman", "Receptionist", null, null, 3);
@@ -421,13 +429,13 @@ export async function run(
 }
 
 /**
- * MySQL connection pool helper (lazy initialized if DB_TYPE=mysql)
+ * MySQL connection pool helper (lazy initialized if DB_TYPE=mysql, cached on globalThis)
  */
 async function getMysqlPool() {
-  if (mysqlPool) return mysqlPool;
+  if (globalForDb.__queuecare_mysql_pool__) return globalForDb.__queuecare_mysql_pool__;
 
   const mysql = await import("mysql2/promise");
-  mysqlPool = mysql.createPool({
+  const pool = mysql.createPool({
     host: process.env.DB_HOST || "localhost",
     user: process.env.DB_USER || "root",
     password: process.env.DB_PASSWORD || "",
@@ -435,10 +443,13 @@ async function getMysqlPool() {
     port: Number(process.env.DB_PORT || 3306),
     waitForConnections: true,
     connectionLimit: 10,
+    maxIdle: 5,
+    idleTimeout: 30000,
     queueLimit: 0,
   });
 
-  return mysqlPool;
+  globalForDb.__queuecare_mysql_pool__ = pool;
+  return pool;
 }
 
 /**
